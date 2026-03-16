@@ -1,0 +1,23 @@
+{
+    "vendeur": {
+        "nom": "SIPET  49773548131337",
+        "adresse": "Adfeso?  69,chemin Ddilh PInio 4754 Lacfoiy, TkinwaoM  FR16497735481",
+        "siret": "49773548131337",
+        "tva_intra": "FR16497735481"
+    },
+    "client": {
+        "nom": "ueorgesde",
+        "adresse": "Gsiard, 52 TUe Fret 52711 Poche-les [ins"
+    },
+    "facture": {
+        "numero": "Inconnu",
+        "date": "Inconnue"
+    },
+    "produits": [],
+    "totaux": {
+        "ht": 0.0,
+        "taux_tva": "20%",
+        "montant_tva": 0.0,
+        "ttc": 0.0
+    }
+}
