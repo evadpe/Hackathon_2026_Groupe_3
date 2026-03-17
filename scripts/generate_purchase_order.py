@@ -11,6 +11,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SUPPLIERS_FILE = BASE_DIR / "data" / "raw" / "suppliers" / "suppliers.csv"
 DOCUMENTS_DIR = BASE_DIR / "data" / "raw" / "documents"
 
+# Notre entreprise = l'émetteur du bon de commande
+BUYER_COMPANY = {
+    "company_name": "StepAhead Industries",
+    "address": "18 rue de l'Industrie",
+    "postal_code": "69000",
+    "city": "Lyon",
+    "country": "France",
+    "siren": "812345678",
+    "siret": "81234567800021",
+    "vat_number": "FR12812345678",
+}
+
 
 def generate_purchase_order_number() -> str:
     year = datetime.now().year
@@ -29,17 +41,34 @@ def generate_purchase_order_data(supplier: pd.Series) -> dict:
     return {
         "purchase_order_number": generate_purchase_order_number(),
         "issue_date": issue_date.strftime("%d/%m/%Y"),
-        "company_name": supplier["company_name"],
-        "address": supplier["address"],
-        "postal_code": supplier["postal_code"],
-        "city": supplier["city"],
-        "siren": supplier["siren"],
-        "siret": supplier["siret"],
+
+        # Acheteur = nous
+        "buyer_company_name": BUYER_COMPANY["company_name"],
+        "buyer_address": BUYER_COMPANY["address"],
+        "buyer_postal_code": BUYER_COMPANY["postal_code"],
+        "buyer_city": BUYER_COMPANY["city"],
+        "buyer_country": BUYER_COMPANY["country"],
+        "buyer_siren": BUYER_COMPANY["siren"],
+        "buyer_siret": BUYER_COMPANY["siret"],
+        "buyer_vat_number": BUYER_COMPANY["vat_number"],
+
+        # Fournisseur
+        "supplier_company_name": supplier["company_name"],
+        "supplier_address": supplier["address"],
+        "supplier_postal_code": supplier["postal_code"],
+        "supplier_city": supplier["city"],
+        "supplier_country": supplier["country"],
+        "supplier_siren": supplier["siren"],
+        "supplier_siret": supplier["siret"],
+        "supplier_vat_number": supplier["vat_number"],
+
+        # Produit
         "product_name": supplier["material_specialty"],
         "quantity": quantity,
         "unit": unit,
         "expected_unit_price": expected_unit_price,
         "expected_amount_ht": expected_amount_ht,
+        "currency": "EUR",
     }
 
 
@@ -49,42 +78,60 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
     c = canvas.Canvas(str(output_path), pagesize=A4)
     width, height = A4
 
+    # Titre
     c.setFont("Helvetica-Bold", 20)
     c.drawString(50, height - 50, "BON DE COMMANDE")
 
+    # Numéro et date
     c.setFont("Helvetica", 11)
     c.drawString(50, height - 90, f"Numéro : {order_data['purchase_order_number']}")
     c.drawString(50, height - 110, f"Date : {order_data['issue_date']}")
 
+    # Notre entreprise = émetteur
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, height - 150, "Fournisseur")
-    c.setFont("Helvetica", 11)
-    c.drawString(50, height - 170, order_data["company_name"])
-    c.drawString(50, height - 190, order_data["address"])
-    c.drawString(50, height - 210, f"{order_data['postal_code']} {order_data['city']}")
-    c.drawString(50, height - 230, f"SIREN : {order_data['siren']}")
-    c.drawString(50, height - 250, f"SIRET : {order_data['siret']}")
+    c.drawString(50, height - 160, "Acheteur / Émetteur")
+    c.setFont("Helvetica", 10)
+    c.drawString(50, height - 180, order_data["buyer_company_name"])
+    c.drawString(50, height - 198, order_data["buyer_address"])
+    c.drawString(50, height - 216, f"{order_data['buyer_postal_code']} {order_data['buyer_city']}")
+    c.drawString(50, height - 234, f"SIREN : {order_data['buyer_siren']}")
+    c.drawString(50, height - 252, f"SIRET : {order_data['buyer_siret']}")
+    c.drawString(50, height - 270, f"TVA : {order_data['buyer_vat_number']}")
 
+    # Fournisseur
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, height - 300, "Commande")
+    c.drawString(320, height - 160, "Fournisseur")
+    c.setFont("Helvetica", 10)
+    c.drawString(320, height - 180, order_data["supplier_company_name"])
+    c.drawString(320, height - 198, order_data["supplier_address"])
+    c.drawString(320, height - 216, f"{order_data['supplier_postal_code']} {order_data['supplier_city']}")
+    c.drawString(320, height - 234, f"SIREN : {order_data['supplier_siren']}")
+    c.drawString(320, height - 252, f"SIRET : {order_data['supplier_siret']}")
+    c.drawString(320, height - 270, f"TVA : {order_data['supplier_vat_number']}")
+
+    # Bloc commande
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 320, "Détail de la commande")
 
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(50, height - 330, "Produit")
-    c.drawString(260, height - 330, "Qté")
-    c.drawString(310, height - 330, "Unité")
-    c.drawString(380, height - 330, "P.U. prévu")
-    c.drawString(460, height - 330, "Total HT")
+    c.drawString(50, height - 350, "Produit")
+    c.drawString(260, height - 350, "Qté")
+    c.drawString(310, height - 350, "Unité")
+    c.drawString(380, height - 350, "P.U. prévu")
+    c.drawString(470, height - 350, "Total HT")
 
-    c.line(50, height - 335, 540, height - 335)
+    c.line(50, height - 355, 545, height - 355)
 
     c.setFont("Helvetica", 10)
-    c.drawString(50, height - 360, str(order_data["product_name"])[:30])
-    c.drawString(260, height - 360, str(order_data["quantity"]))
-    c.drawString(310, height - 360, str(order_data["unit"]))
-    c.drawString(380, height - 360, f"{order_data['expected_unit_price']:.2f} EUR")
-    c.drawString(460, height - 360, f"{order_data['expected_amount_ht']:.2f} EUR")
+    c.drawString(50, height - 380, str(order_data["product_name"])[:30])
+    c.drawString(260, height - 380, str(order_data["quantity"]))
+    c.drawString(310, height - 380, str(order_data["unit"]))
+    c.drawString(380, height - 380, f"{order_data['expected_unit_price']:.2f} EUR")
+    c.drawString(470, height - 380, f"{order_data['expected_amount_ht']:.2f} EUR")
 
+    # Pied
     c.setFont("Helvetica-Oblique", 9)
+    c.drawString(50, 70, "")
     c.drawString(50, 50, "")
 
     c.save()

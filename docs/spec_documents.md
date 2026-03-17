@@ -107,12 +107,24 @@ Les fournisseurs représentent des fournisseurs de matières premières et de co
 - supplier_id
 - purchase_order_number
 - issue_date
-- company_name
-- address
-- postal_code
-- city
-- siren
-- siret
+
+### Champs acheteur / émetteur
+- buyer_company_name
+- buyer_address
+- buyer_postal_code
+- buyer_city
+- buyer_siren
+- buyer_siret
+- buyer_vat_number
+
+### Champs fournisseur
+- supplier_company_name
+- supplier_address
+- supplier_postal_code
+- supplier_city
+- supplier_siren
+- supplier_siret
+- supplier_vat_number
 
 ### Champs métier
 - product_name
@@ -123,9 +135,11 @@ Les fournisseurs représentent des fournisseurs de matières premières et de co
 - currency
 
 ### Champs critiques
-- supplier_id
-- siren
-- siret
+- buyer_company_name
+- supplier_company_name
+- supplier_siren
+- supplier_siret
+- supplier_vat_number
 - product_name
 - quantity
 - unit
