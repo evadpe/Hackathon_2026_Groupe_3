@@ -1,0 +1,38 @@
+{
+    "metadata": {
+        "type": "Bon de Commande",
+        "file": "temp_page.jpg"
+    },
+    "vendor": {
+        "name": "Renaud",
+        "address": "7 , boulevard Roger Vasseur, 13734 Sainte Thibaultdan",
+        "siren": "611879054",
+        "siret": "61187905452186",
+        "tva": "FR29611879054"
+    },
+    "customer": {
+        "name": "StepAhead Industries",
+        "address": "18 rue de l'Industrie, 69000 Lyon",
+        "is_valid": true
+    },
+    "doc_info": {
+        "number": "BC-2026-8060",
+        "date": "17/03/2026",
+        "due_date": "Inconnue"
+    },
+    "line_items": [
+        {
+            "description": "Fil de couture renforcé",
+            "qty": 330,
+            "unit": "unité",
+            "pu_ht": 10.72,
+            "total_ht": 3537.6
+        }
+    ],
+    "financials": {
+        "total_ht": 0.0,
+        "tva_rate": "0%",
+        "tva_amount": 0.0,
+        "total_ttc": 0.0
+    }
+}

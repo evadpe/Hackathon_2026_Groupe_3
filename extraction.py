@@ -458,18 +458,33 @@ def process_document_extraction(image_path):
 # ================================================================== #
 
 def main():
-    extensions = ('*.pdf', '*.jpg', '*.jpeg', '*.png')
+    # Recherche récursive de tous les fichiers dans INPUT_FOLDER et ses sous-dossiers.
+    # glob.glob(...) sans ** ne remonte pas les sous-dossiers → on utilise os.walk.
+    extensions = ('.pdf', '.jpg', '.jpeg', '.png')
     files = []
-    for ext in extensions:
-        files.extend(glob.glob(os.path.join(INPUT_FOLDER, ext)))
+    for root, dirs, filenames in os.walk(INPUT_FOLDER):
+        # Trier pour un affichage cohérent
+        dirs.sort()
+        for filename in sorted(filenames):
+            if filename.lower().endswith(extensions):
+                files.append(os.path.join(root, filename))
 
     if not files:
-        print(f"Aucun fichier trouvé dans '{INPUT_FOLDER}'")
+        print(f"Aucun fichier trouvé dans '{INPUT_FOLDER}' (ni ses sous-dossiers)")
         return
 
-    for file_path in files:
-        print(f"\nTraitement : {os.path.basename(file_path)}")
+    print(f"{len(files)} fichier(s) trouvé(s)\n")
 
+    ok_count  = 0
+    err_count = 0
+
+    for file_path in files:
+        # Chemin relatif du fichier par rapport à INPUT_FOLDER
+        # ex. "document client 2/invoice.pdf"
+        rel_path = os.path.relpath(file_path, INPUT_FOLDER)
+        print(f"Traitement : {rel_path}")
+
+        # ── Conversion PDF → image temporaire ────────────────────────
         if file_path.lower().endswith('.pdf'):
             try:
                 pages = convert_from_path(file_path, poppler_path=POPPLER_PATH)
@@ -479,19 +494,34 @@ def main():
                 if os.path.exists(temp_image_path):
                     os.remove(temp_image_path)
             except Exception as e:
-                print(f"  Erreur PDF : {e}")
+                print(f"  ✗ Erreur PDF : {e}\n")
+                err_count += 1
                 continue
         else:
             result = process_document_extraction(file_path)
 
-        if result:
-            output_name = os.path.basename(file_path) + ".json"
-            output_path = os.path.join(OUTPUT_FOLDER, output_name)
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=4, ensure_ascii=False)
-            print(f"  -> {output_path}")
-        else:
-            print(f"  Extraction échouée (image illisible ?)")
+        if not result:
+            print(f"  ✗ Extraction échouée (image illisible ?)\n")
+            err_count += 1
+            continue
+
+        # ── Calcul du chemin de sortie en miroir de l'entrée ─────────
+        # Structure d'entrée  : test_documents/document client 2/invoice.pdf
+        # Structure de sortie : resultats_json/document client 2/invoice.pdf.json
+        rel_dir     = os.path.dirname(rel_path)          # "document client 2"
+        output_dir  = os.path.join(OUTPUT_FOLDER, rel_dir)
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_name = os.path.basename(file_path) + ".json"  # "invoice.pdf.json"
+        output_path = os.path.join(output_dir, output_name)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=4, ensure_ascii=False)
+
+        print(f"  ✓ → {output_path}\n")
+        ok_count += 1
+
+    print(f"─── Terminé : {ok_count} succès, {err_count} erreur(s) ───")
 
 
 if __name__ == "__main__":
