@@ -1,69 +1,66 @@
-from faker import Faker
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import random
 import os
 
-fake = Faker('fr_FR')
-
-def create_legal_invoice(filename, rotate=False):
-    # Création du fond A4 (800x1100)
+def generer_document_chaussure(type_doc, nom_fichier, grain_de_folie=True):
+    # 1. Création d'une image blanche format A4 (800x1100)
     img = Image.new('RGB', (800, 1100), color=(255, 255, 255))
     canvas = ImageDraw.Draw(img)
     
-    # 1. DONNÉES MÉTIER (Mentions Obligatoires)
-    vendor_name = fake.company().upper()
-    vendor_siret = "".join([str(random.randint(0, 9)) for _ in range(14)])
-    vendor_address = fake.address().replace('\n', ', ')
-    client_name = fake.name()
-    client_address = fake.address().replace('\n', ', ')
+    # 2. Données fixes pour le TP
+    vendeur_nom = "MANUFACTURE DU CUIR FRANCAIS"
+    vendeur_siret = "12345678901234"
+    client_nom = "STEP-AHEAD INDUSTRIES"
     
-    inv_number = f"INV-{fake.year()}-{random.randint(1000, 9999)}"
-    inv_date = fake.date_this_year().strftime("%d/%m/%Y")
+    # 3. Données variables (les articles de chaussure)
+    articles = [
+        {"sku": "CUIR-001", "desc": "Peaux de Veau", "couleur": "Noir", "unite": "m2", "qte": 20, "pu": 45.0},
+        {"sku": "SEM-42-G", "desc": "Semelles Gomme", "couleur": "Brun", "unite": "paires", "qte": 50, "pu": 8.5}
+    ]
     
-    # Calculs financiers
-    price_ht = random.randint(100, 2000)
-    tva_rate = 0.20
-    tva_amount = price_ht * tva_rate
-    price_ttc = price_ht + tva_amount
+    # 4. Dessin de l'en-tête (Obligatoire)
+    canvas.text((320, 20), f"*** {type_doc.upper()} ***", fill=(0, 0, 0))
+    canvas.text((50, 50), f"Vendeur : {vendeur_nom}", fill=(0, 0, 0))
+    canvas.text((50, 70), f"SIRET : {vendeur_siret}", fill=(0, 0, 0))
+    canvas.text((450, 120), f"Client : {client_nom}", fill=(0, 0, 0))
+    
+    # 5. Infos spécifiques au document
+    prefixe = "DEV" if type_doc == "Devis" else "BC" if type_doc == "Bon de Commande" else "INV"
+    num_doc = f"{prefixe}-2026-{random.randint(1000, 9999)}"
+    canvas.text((50, 180), f"Numéro : {num_doc}", fill=(0, 0, 0))
+    canvas.text((50, 200), f"Date : 17/03/2026", fill=(0, 0, 0))
+    
+    # 6. Tableau des produits (Spécificités Chaussure)
+    y = 300
+    header = "SKU | Désignation | Couleur | Qté | Unité | P.U HT | Total HT"
+    canvas.text((50, y), header, fill=(0, 0, 0))
+    canvas.line((50, y+15, 750, y+15), fill=(0, 0, 0))
+    
+    total_ht_global = 0
+    y += 30
+    for art in articles:
+        total_ligne = art["qte"] * art["pu"]
+        total_ht_global += total_ligne
+        ligne = f"{art['sku']} | {art['desc']} | {art['couleur']} | {art['qte']} | {art['unite']} | {art['pu']} | {total_ligne}"
+        canvas.text((50, y), ligne, fill=(0, 0, 0))
+        y += 25
+    
+    # 7. Totaux financiers
+    tva = total_ht_global * 0.20
+    ttc = total_ht_global + tva
+    canvas.text((500, y+50), f"Total HT : {total_ht_global:.2f} EUR", fill=(0, 0, 0))
+    canvas.text((500, y+75), f"TVA (20%) : {tva:.2f} EUR", fill=(0, 0, 0))
+    canvas.text((500, y+100), f"TOTAL TTC : {ttc:.2f} EUR", fill=(0, 0, 0))
 
-    # 2. DESSIN SUR LA FACTURE
-    # En-tête Vendeur
-    canvas.text((50, 50), f"VENDEUR : {vendor_name}", fill=(0, 0, 0))
-    canvas.text((50, 70), f"SIRET : {vendor_siret}", fill=(0, 0, 0))
-    canvas.text((50, 90), f"Adresse : {vendor_address}", fill=(0, 0, 0))
-    canvas.text((50, 110), f"TVA Intracom : FR{random.randint(10, 99)}{vendor_siret[:9]}", fill=(0, 0, 0))
+    # 8. Simulation de "dégradation" (Légère rotation)
+    if grain_de_folie:
+        img = img.rotate(random.uniform(-2.0, 2.0), expand=True, fillcolor=(255, 255, 255))
+    
+    img.save(nom_fichier)
+    print(f"Généré : {nom_fichier}")
 
-    # Bloc Client
-    canvas.text((450, 180), "CLIENT :", fill=(0, 0, 0))
-    canvas.text((450, 200), client_name, fill=(0, 0, 0))
-    canvas.text((450, 220), client_address, fill=(0, 0, 0))
-
-    # Infos Facture
-    canvas.text((50, 300), f"FACTURE N° : {inv_number}", fill=(0, 0, 0))
-    canvas.text((50, 320), f"Date d'émission : {inv_date}", fill=(0, 0, 0))
-
-    # Détail (Tableau simplifié)
-    canvas.text((50, 400), "Désignation                     Qté    P.U. HT    Total HT", fill=(0, 0, 0))
-    canvas.text((50, 415), "-"*85, fill=(0, 0, 0))
-    canvas.text((50, 435), f"Prestation de service informatique  1      {price_ht}€       {price_ht}€", fill=(0, 0, 0))
-
-    # Totaux
-    canvas.text((500, 600), f"Total HT : {price_ht:.2f} €", fill=(0, 0, 0))
-    canvas.text((500, 620), f"TVA (20%) : {tva_amount:.2f} €", fill=(0, 0, 0))
-    canvas.text((500, 640), f"TOTAL TTC : {price_ttc:.2f} €", fill=(0, 0, 0))
-
-    # Mentions Légales Pied de page
-    canvas.text((50, 900), f"Conditions de paiement : Paiement à réception. Date limite : {inv_date}", fill=(0, 0, 0))
-    canvas.text((50, 920), "Pénalités de retard : 3x taux légal | Indemnité forfaitaire de recouvrement : 40€", fill=(0, 0, 0))
-
-    # 3. DÉGRADATION (Rotation)
-    if rotate:
-        img = img.rotate(random.randint(3, 7), expand=True, fillcolor=(255, 255, 255))
-
-    img.save(filename)
-    print(f"Facture générée : {filename}")
-
-# Génération des tests
-os.makedirs("entree_factures", exist_ok=True)
-create_legal_invoice("entree_factures/facture_droite.jpg", rotate=False)
-create_legal_invoice("entree_factures/facture_penchee.jpg", rotate=True)
+# Création des dossiers et des fichiers de test
+os.makedirs("test_documents", exist_ok=True)
+generer_document_chaussure("Devis", "test_documents/devis_chaussure.jpg")
+generer_document_chaussure("Bon de Commande", "test_documents/bc_chaussure.jpg")
+generer_document_chaussure("Facture", "test_documents/facture_chaussure.jpg")
