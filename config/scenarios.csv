@@ -1,0 +1,9 @@
+scenario_id,scenario_name,description,anomaly_type,severity,documents_impacted,expected_flags
+SC001,normal,Dossier entièrement cohérent,none,low,all,"[]"
+SC002,siret_mismatch,SIRET différent entre facture et attestation,consistency,high,invoice|siret_certificate,"['siret_mismatch']"
+SC003,expired_urssaf,Attestation URSSAF expirée,compliance,high,urssaf,"['expired_urssaf']"
+SC004,vat_inconsistent,Montants HT TVA TTC incohérents,financial,medium,invoice|quote,"['vat_inconsistent']"
+SC005,fake_invoice,Facture avec données falsifiées ou suspectes,fraud,high,invoice,"['fake_invoice']"
+SC006,mixed_supplier_bundle,Un document appartient à un autre fournisseur,bundle_consistency,high,bundle,"['mixed_supplier_document']"
+SC007,low_quality_scan,Documents corrects mais dégradés visuellement,quality,medium,all,"['low_quality_scan']"
+SC008,partial_missing_info,Informations critiques manquantes,missing_data,medium,invoice|quote|rib,"['missing_critical_field']"
