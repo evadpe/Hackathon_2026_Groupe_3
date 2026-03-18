@@ -2,7 +2,6 @@
 
 "use client";
 import { Save, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { AdminDocument } from "@/types";
 import { getFieldType } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -131,10 +130,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     try {
       await docService.validateDoc(document.id, formData);
       if (onSuccess) onSuccess();
-      alert("Document validé et envoyé en Zone Gold !");
+      alert("✅ Document validé et envoyé en Zone Gold !");
     } catch (error) {
-      console.error("Erreur lors de la validation", error);
-      alert("Erreur lors de la validation");
+      console.error("❌ Erreur lors de la validation", error);
+      alert("❌ Erreur lors de la validation");
     } finally {
       setIsSubmitting(false);
     }
@@ -147,10 +146,9 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     try {
       await docService.rejectDoc(document.id, reason || undefined);
       if (onSuccess) onSuccess();
-      toast.success("Document rejeté avec succès");
     } catch (error) {
-      console.error("Erreur lors du rejet", error);
-      alert("Erreur lors du rejet");
+      console.error("❌ Erreur lors du rejet", error);
+      alert("❌ Erreur lors du rejet");
     } finally {
       setIsSubmitting(false);
     }
