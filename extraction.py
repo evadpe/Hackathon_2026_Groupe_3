@@ -1,5 +1,6 @@
 import easyocr
 import cv2
+import numpy as np              # pour les calculs matriciels (rotation, filtres)
 import json
 import re
 import os
@@ -321,6 +322,113 @@ def parse_financials(right_lines, full_text_fallback):
 #  Fonction principale d'extraction
 # ================================================================== #
 
+# ================================================================== #
+#  Prétraitement des images dégradées
+#
+#  Avant de lancer l'OCR, on détecte et corrige automatiquement
+#  les 3 types de dégradations présentes dans les fichiers de test :
+#
+#  1. ROTATION   : le document est légèrement incliné
+#                  → on mesure l'angle via les lignes de Hough
+#                  → on redresse l'image avant l'OCR
+#
+#  2. PIXELISÉ   : l'image est en basse résolution (texte granuleux)
+#                  → on agrandit x2 avec interpolation cubique
+#                  → on applique un filtre de netteté
+#
+#  3. FLOU       : l'image a été lissée (texte fondu)
+#                  → même traitement que pixelisé (upscale + sharpen)
+#
+#  4. TACHES     : cercles gris sur le document
+#                  → aucun traitement nécessaire : EasyOCR les ignore
+#                  car les cercles ne ressemblent pas à du texte
+#
+#  5. ZONE MASQUÉE : rectangle opaque cache des informations
+#                  → aucun traitement possible : l'info est physiquement
+#                  absente, le champ correspondant restera "Inconnu"
+# ================================================================== #
+
+def prepare_img(img):
+    """
+    Applique automatiquement les corrections nécessaires selon l'état de l'image.
+    Retourne l'image corrigée (tableau numpy BGR, comme cv2.imread).
+
+    Les corrections appliquées sont affichées dans la console pour traçabilité.
+    """
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # ── CORRECTION 1 : Rotation ────────────────────────────────────────────
+    # On détecte les lignes quasi-horizontales du document avec la transformation
+    # de Hough, puis on calcule la médiane de leurs angles.
+    # Si l'angle médian dépasse 0.5°, on fait pivoter l'image pour la redresser.
+
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180,
+        threshold=100, minLineLength=100, maxLineGap=10
+    )
+
+    angle_correction = 0.0
+    if lines is not None:
+        angles_detectes = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            if x2 != x1:
+                a = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+                if abs(a) < 15:   # on garde uniquement les lignes quasi-horizontales
+                    angles_detectes.append(a)
+        if angles_detectes:
+            angle_correction = float(np.median(angles_detectes))
+
+    if abs(angle_correction) > 0.5:
+        print(f"    [prétraitement] Rotation détectée : {angle_correction:.2f}° → correction appliquée")
+        cx, cy = w // 2, h // 2
+        M = cv2.getRotationMatrix2D((cx, cy), angle_correction, 1.0)
+        img = cv2.warpAffine(
+            img, M, (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE   # remplit les bords avec les pixels voisins
+        )
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # ── CORRECTION 2 : Upscaling (pixelisé ou flou) ───────────────────────
+    # La variance du Laplacien mesure la netteté : une image nette a beaucoup
+    # de contours (variance élevée), une image floue ou pixelisée en a peu.
+    # Seuil calibré sur les images de test :
+    #   - invoice_clean     : 1287  → image nette, pas de traitement
+    #   - invoice_blur      :    6  → très flou, upscale + sharpen nécessaires
+    #   - invoice_pixelized :   84  → pixelisé, upscale + sharpen nécessaires
+
+    nettete = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    if nettete < 200:
+        print(f"    [prétraitement] Image dégradée (netteté={nettete:.0f}) → upscaling x2")
+        img = cv2.resize(
+            img,
+            (w * 2, h * 2),
+            interpolation=cv2.INTER_CUBIC   # meilleure qualité que INTER_LINEAR pour agrandir
+        )
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # ── CORRECTION 3 : Sharpening après upscaling ─────────────────────
+        # L'agrandissement rend l'image plus grande mais toujours floue.
+        # Ce filtre de convolution renforce les contours (bordures des lettres).
+        # Le noyau "[-1, -1, -1 / -1, 9, -1 / -1, -1, -1]" soustrait le flou
+        # environnant et amplifie le pixel central → lettres plus nettes.
+        nettete_apres = cv2.Laplacian(gray, cv2.CV_64F).var()
+        if nettete_apres < 200:
+            print(f"    [prétraitement] Toujours flou après upscaling (netteté={nettete_apres:.0f}) → sharpening")
+            kernel_nettoyer = np.array([
+                [-1, -1, -1],
+                [-1,  9, -1],
+                [-1, -1, -1]
+            ])
+            img = cv2.filter2D(img, -1, kernel_nettoyer)
+
+    return img
+
+
 def process_document_extraction(image_path):
     """
     Fonction principale : prend une image de document et retourne un JSON structuré
@@ -329,6 +437,9 @@ def process_document_extraction(image_path):
     raw_img = cv2.imread(image_path)
     if raw_img is None:
         return None
+
+    # ── Prétraitement : corrige rotation, flou et pixelisation avant l'OCR ─
+    raw_img = prepare_img(raw_img)
 
     height, width, _ = raw_img.shape
 
