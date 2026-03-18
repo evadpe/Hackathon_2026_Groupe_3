@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from typing import List, Tuple
 from models import LigneDocument, Alerte, NiveauAlerte
 
-# ── Groupes de couleurs : deux couleurs du même groupe sont considérées proches ──
+# Palettes de couleurs : si deux couleurs sont dans le même groupe, elles sont considérées identiques
 GROUPES_COULEURS = [
     {"noir", "black", "ebene", "ebène", "anthracite", "charbon"},
     {"blanc", "white", "ivoire", "creme", "crème", "ecru", "écru", "nacre"},
@@ -26,7 +26,7 @@ GROUPES_COULEURS = [
 
 
 def _normaliser(texte: str) -> str:
-    """Minuscules, suppression des accents courants, trim."""
+    """Passe le texte en minuscules et retire les accents pour comparer sans se tromper."""
     if not texte:
         return ""
     t = texte.lower().strip()
@@ -44,7 +44,7 @@ def _normaliser(texte: str) -> str:
 
 
 def _groupe_couleur(couleur: str) -> int | None:
-    """Retourne l'index du groupe de la couleur, ou None si non trouvée."""
+    """Trouve dans quelle palette se trouve une couleur (retourne None si inconnue)."""
     c = _normaliser(couleur)
     for i, groupe in enumerate(GROUPES_COULEURS):
         for membre in groupe:
@@ -54,7 +54,7 @@ def _groupe_couleur(couleur: str) -> int | None:
 
 
 def _couleurs_compatibles(c1: str, c2: str) -> bool:
-    """True si les deux couleurs appartiennent au même groupe."""
+    """Retourne True si les deux couleurs sont de la même famille (ex: 'marine' et 'navy')."""
     if _normaliser(c1) == _normaliser(c2):
         return True
     g1 = _groupe_couleur(c1)
@@ -66,11 +66,11 @@ def _couleurs_compatibles(c1: str, c2: str) -> bool:
 
 
 def _similarite(a: str, b: str) -> float:
-    """Score de similarité entre deux chaînes (0.0 → 1.0)."""
+    """Mesure à quel point deux textes se ressemblent, de 0 (rien en commun) à 1 (identiques)."""
     return SequenceMatcher(None, _normaliser(a), _normaliser(b)).ratio()
 
 
-# ── Mots-clés de matières dont la substitution est critique ──────────────────
+# Matières dont un remplacement serait une fraude grave (ex: cuir vrai → simili)
 MATIERES_CRITIQUES = [
     {"cuir", "leather"},
     {"cuir synthetique", "simili", "synthetique", "pu", "polyurethane"},
@@ -83,7 +83,7 @@ MATIERES_CRITIQUES = [
 
 
 def _detecter_matiere(description: str) -> int | None:
-    """Retourne l'index du groupe de matière détecté dans la description."""
+    """Cherche quelle matière critique est mentionnée dans une description de produit."""
     d = _normaliser(description)
     for i, groupe in enumerate(MATIERES_CRITIQUES):
         for mot in groupe:
@@ -101,10 +101,10 @@ def analyser_coherence_semantique(
     lignes_facture: List[LigneDocument],
 ) -> Tuple[List[Alerte], str]:
     """
-    Analyse sémantique sans LLM :
-    - Comparaison des couleurs via dictionnaire de groupes
-    - Détection de substitution de matière critique
-    - Similarité des descriptions (difflib)
+    Compare ligne par ligne le bon de commande et la facture sur 3 points :
+    1. La couleur est-elle la même famille ?
+    2. La matière a-t-elle été substituée (ex: cuir → simili) ?
+    3. Les descriptions se ressemblent-elles globalement (score > 40%) ?
 
     Retourne : (liste d'alertes, résumé textuel)
     """
@@ -120,7 +120,7 @@ def analyser_coherence_semantique(
 
         ref = ligne_bc.reference
 
-        # ── Vérification couleur ─────────────────────────────────────────────
+        # Vérifie que la couleur facturée est dans la même famille que celle commandée
         if ligne_bc.couleur and ligne_fac.couleur:
             if not _couleurs_compatibles(ligne_bc.couleur, ligne_fac.couleur):
                 alertes.append(Alerte(
@@ -139,7 +139,7 @@ def analyser_coherence_semantique(
             else:
                 nb_ok += 1
 
-        # ── Vérification matière ─────────────────────────────────────────────
+        # Détecte si on a remplacé une matière critique par une autre (fraude potentielle)
         mat_bc  = _detecter_matiere(ligne_bc.description)
         mat_fac = _detecter_matiere(ligne_fac.description)
         if mat_bc is not None and mat_fac is not None and mat_bc != mat_fac:
@@ -154,7 +154,7 @@ def analyser_coherence_semantique(
             ))
             details.append(f"{ref}: matiere NOK")
 
-        # ── Similarité globale des descriptions (alerte si < 40%) ────────────
+        # Si aucune matière connue détectée, compare les descriptions textuellement
         elif mat_bc is None and mat_fac is None:
             score = _similarite(ligne_bc.description, ligne_fac.description)
             if score < 0.40:
@@ -171,7 +171,7 @@ def analyser_coherence_semantique(
             else:
                 nb_ok += 1
 
-    # ── Résumé ───────────────────────────────────────────────────────────────
+    # Résumé lisible pour l'opérateur
     if not alertes:
         resume = (
             f"Analyse semantique OK : {nb_ok} ligne(s) verifiee(s), "

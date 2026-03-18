@@ -23,8 +23,8 @@ from claude_analyzer import analyser_coherence_semantique
 
 class VerificateurDocuments:
     """
-    Effectue le rapprochement tripartite : Bon de Commande ↔ Devis ↔ Facture.
-    Le Devis est optionnel (si absent, la vérification des frais de port est ignorée).
+    Compare les trois documents entre eux : Bon de Commande ↔ Devis ↔ Facture.
+    Le Devis est optionnel — s'il manque, on ignore juste la vérification des frais de port.
     """
 
     def verifier(
@@ -36,17 +36,17 @@ class VerificateurDocuments:
 
         toutes_alertes: list[Alerte] = []
 
-        # ── 1. Cohérence interne des totaux ──────────────────────────────────
+        # Étape 1 : les totaux du document sont-ils cohérents en interne (HT + TVA = TTC) ?
         toutes_alertes.extend(verifier_totaux(facture, "facture"))
         if devis:
             toutes_alertes.extend(verifier_totaux(devis, "devis"))
 
-        # ── 2. Matching et vérifications ligne par ligne ──────────────────────
+        # Étape 2 : on associe chaque ligne du BC à sa ligne correspondante dans la facture
         pairs = matcher_lignes(bon_commande, facture)
 
         for bc_ligne, fac_ligne in pairs:
 
-            # Ligne facturée qui n'existe pas dans le BC
+            # Une ligne est facturée mais n'a jamais été commandée → suspect
             if bc_ligne is None:
                 toutes_alertes.append(Alerte(
                     niveau=NiveauAlerte.ERREUR,
@@ -58,7 +58,7 @@ class VerificateurDocuments:
                 ))
                 continue
 
-            # Ligne commandée non présente dans la facture
+            # Une ligne a été commandée mais n'apparaît pas sur la facture → livraison partielle ?
             if fac_ligne is None:
                 toutes_alertes.append(Alerte(
                     niveau=NiveauAlerte.AVERTISSEMENT,
@@ -70,22 +70,22 @@ class VerificateurDocuments:
                 ))
                 continue
 
-            # Vérifications métier sur la paire de lignes
+            # Pour chaque paire BC ↔ Facture : vérifie prix, quantité et pointure
             toutes_alertes.extend(verifier_prix(bc_ligne, fac_ligne))
             toutes_alertes.extend(verifier_quantite(bc_ligne, fac_ligne))
             toutes_alertes.extend(verifier_pointure(bc_ligne, fac_ligne))
 
-        # ── 3. Frais de port (requiert le devis) ─────────────────────────────
+        # Étape 3 : les frais de port correspondent-ils au devis ?
         if devis:
             toutes_alertes.extend(verifier_frais_port(devis, facture))
 
-        # ── 4. Analyse sémantique intelligente (Claude AI) ───────────────────
+        # Étape 4 : analyse sémantique — couleurs, matières, similarité des descriptions
         alertes_ia, resume_ia = analyser_coherence_semantique(
             bon_commande.lignes, facture.lignes
         )
         toutes_alertes.extend(alertes_ia)
 
-        # ── 5. Calcul du statut global ────────────────────────────────────────
+        # Étape 5 : verdict final selon le nombre et la gravité des alertes
         nb_erreurs       = sum(1 for a in toutes_alertes if a.niveau == NiveauAlerte.ERREUR)
         nb_avertissements = sum(1 for a in toutes_alertes if a.niveau == NiveauAlerte.AVERTISSEMENT)
         nb_infos         = sum(1 for a in toutes_alertes if a.niveau == NiveauAlerte.INFO)

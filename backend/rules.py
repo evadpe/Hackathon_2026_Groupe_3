@@ -9,7 +9,8 @@ from models import (
     LigneDocument, Alerte, NiveauAlerte, CategorieArticle,
 )
 
-TOLERANCE_CUIR = 0.05  # 5% de tolérance pour le cuir (matière naturelle non uniforme)
+# Le cuir naturel peut varier légèrement en quantité — on tolère 5% d'écart
+TOLERANCE_CUIR = 0.05
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,9 +22,8 @@ def matcher_lignes(
     facture: Facture,
 ) -> List[Tuple[Optional[LigneDocument], Optional[LigneDocument]]]:
     """
-    Associe les lignes BC ↔ Facture par référence.
-    Retourne des paires (ligne_bc, ligne_facture).
-    Si une ligne n'a pas de correspondance, l'autre est None.
+    Associe chaque ligne du BC à sa ligne jumelle dans la facture (même référence article).
+    Si une ligne existe d'un côté seulement, l'autre valeur de la paire est None.
     """
     pairs: List[Tuple[Optional[LigneDocument], Optional[LigneDocument]]] = []
     facture_dict = {l.reference: l for l in facture.lignes}
@@ -44,11 +44,11 @@ def matcher_lignes(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def verifier_prix(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
-    """Compare le prix unitaire. Applicable uniquement si les unités sont identiques."""
+    """Le prix unitaire facturé correspond-il à celui du bon de commande ?"""
     alertes = []
 
     if bc.unite.lower() != fac.unite.lower():
-        # Prix non comparable directement si unités différentes -> vérifier montant_ht
+        # Unités différentes : on compare les montants totaux plutôt que le prix unitaire
         return verifier_montant_ht(bc, fac)
 
     if abs(bc.prix_unitaire - fac.prix_unitaire) > 0.001:
@@ -67,7 +67,7 @@ def verifier_prix(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
 
 
 def verifier_montant_ht(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
-    """Compare le montant HT total de la ligne (utile quand les unités diffèrent)."""
+    """Quand les unités diffèrent, on compare le montant HT total de la ligne."""
     alertes = []
     if abs(bc.montant_ht - fac.montant_ht) > 0.02:
         alertes.append(Alerte(
@@ -89,7 +89,7 @@ def verifier_montant_ht(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
 def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     alertes = []
 
-    # Unités différentes : déléguer à la vérification de conversion
+    # Unités différentes : on vérifie la conversion plutôt que les chiffres bruts
     if bc.unite.lower() != fac.unite.lower():
         alertes.extend(verifier_conversion_unites(bc, fac))
         return alertes
@@ -100,7 +100,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     ecart_pct = (fac.quantite - bc.quantite) / bc.quantite
 
     if bc.categorie == CategorieArticle.CUIR_TEXTILE:
-        # Tolérance de 5% (peaux naturelles non uniformes)
+        # Cuir/textile : tolérance de ±5% acceptée (matière naturelle)
         if abs(ecart_pct) > TOLERANCE_CUIR:
             alertes.append(Alerte(
                 niveau=NiveauAlerte.ERREUR,
@@ -112,6 +112,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
                 ecart=f"{ecart_pct*100:+.1f}% (tolérance : ±5%)",
             ))
         elif abs(ecart_pct) > 0:
+            # Dans la tolérance, mais on le signale quand même pour info
             alertes.append(Alerte(
                 niveau=NiveauAlerte.INFO,
                 categorie="QUANTITE",
@@ -123,7 +124,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
             ))
 
     elif bc.categorie == CategorieArticle.FOURNITURES:
-        # Zéro tolérance + détection d'erreur de zéro (ex: 1000 au lieu de 10 000)
+        # Fournitures : zéro tolérance, et on détecte les erreurs de zéro (1000 au lieu de 10 000)
         if fac.quantite != bc.quantite:
             ratio = max(fac.quantite, bc.quantite) / min(fac.quantite, bc.quantite) if min(fac.quantite, bc.quantite) != 0 else 0
             erreur_zero = ratio in (10.0, 100.0, 1000.0)
@@ -141,7 +142,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
             ))
 
     else:
-        # Semelles/talons : vérification stricte
+        # Semelles/talons : aucune tolérance, la quantité doit être exacte
         if fac.quantite != bc.quantite:
             alertes.append(Alerte(
                 niveau=NiveauAlerte.ERREUR,
@@ -161,6 +162,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def verifier_pointure(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
+    """La pointure facturée correspond-elle à la pointure commandée ?"""
     alertes = []
 
     if bc.categorie != CategorieArticle.SEMELLES_TALONS:
@@ -198,13 +200,13 @@ def verifier_pointure(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
 
 def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     """
-    Vérifie la cohérence quand les unités BC ≠ Facture.
-    Utilise la règle de conversion définie dans le JSON du BC.
-    Ex : BC commande 10 rouleaux (1 rouleau = 500 m), la facture doit indiquer 5000 m.
+    BC et facture n'utilisent pas la même unité (ex: rouleaux vs mètres).
+    On vérifie que la conversion indiquée dans le BC est bien respectée.
     """
     alertes = []
 
     if bc.conversion is None:
+        # Pas de règle de conversion définie → impossible à vérifier automatiquement
         alertes.append(Alerte(
             niveau=NiveauAlerte.AVERTISSEMENT,
             categorie="UNITE",
@@ -233,6 +235,7 @@ def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Al
                 ecart=f"{ecart:+.1f} {fac.unite}",
             ))
         else:
+            # Conversion correcte, on le note pour traçabilité
             alertes.append(Alerte(
                 niveau=NiveauAlerte.INFO,
                 categorie="UNITE",
@@ -245,6 +248,7 @@ def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Al
                 valeur_recue=f"{fac.quantite} {fac.unite}",
             ))
     else:
+        # L'unité utilisée n'est ni celle du BC ni l'équivalent connu
         alertes.append(Alerte(
             niveau=NiveauAlerte.AVERTISSEMENT,
             categorie="UNITE",
@@ -262,6 +266,7 @@ def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Al
 # ─────────────────────────────────────────────────────────────────────────────
 
 def verifier_frais_port(devis: Devis, facture: Facture) -> List[Alerte]:
+    """Le devis disait franco de port ? Vérifie que la facture ne facture pas quand même."""
     alertes = []
 
     if devis.franco_de_port and facture.frais_port > 0:
@@ -274,6 +279,7 @@ def verifier_frais_port(devis: Devis, facture: Facture) -> List[Alerte]:
             ecart=f"+{facture.frais_port:.2f} EUR non prévu",
         ))
     elif not devis.franco_de_port and devis.frais_port > 0:
+        # Frais de port prévus : le montant doit correspondre au devis
         if abs(devis.frais_port - facture.frais_port) > 0.01:
             alertes.append(Alerte(
                 niveau=NiveauAlerte.AVERTISSEMENT,
@@ -292,9 +298,10 @@ def verifier_frais_port(devis: Devis, facture: Facture) -> List[Alerte]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def verifier_totaux(doc: Document, label: str) -> List[Alerte]:
+    """Le total HT et le TTC du document sont-ils cohérents avec les lignes et la TVA ?"""
     alertes = []
 
-    # Total HT = Σ lignes + frais de port
+    # Total HT doit égaler la somme des lignes + frais de port
     total_calcule = sum(l.montant_ht for l in doc.lignes) + doc.frais_port
     if abs(total_calcule - doc.total_ht) > 0.02:
         alertes.append(Alerte(
@@ -306,7 +313,7 @@ def verifier_totaux(doc: Document, label: str) -> List[Alerte]:
             ecart=f"{doc.total_ht - total_calcule:+.2f} EUR",
         ))
 
-    # Total TTC = Total HT + TVA
+    # Total TTC doit égaler Total HT + TVA
     ttc_calcule = doc.total_ht + doc.tva_montant
     if abs(ttc_calcule - doc.total_ttc) > 0.02:
         alertes.append(Alerte(

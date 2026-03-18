@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 # Chemin Poppler (Windows) : définir via variable d'environnement
 # Exemple : set POPPLER_PATH=C:\poppler\Library\bin
-POPPLER_PATH = os.getenv("POPPLER_PATH") or r"C:\poppler\poppler-25.12.0\Library\bin"
+POPPLER_PATH = os.getenv("POPPLER_PATH")  # None sur Linux/Docker (Poppler dans le PATH système)
 
 
 def pdf_to_ocr_dict(pdf_path: str) -> dict | None:

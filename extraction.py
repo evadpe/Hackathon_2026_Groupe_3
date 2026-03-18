@@ -7,13 +7,14 @@ import glob
 from pdf2image import convert_from_path
 
 # --- CONFIGURATION ---
-INPUT_FOLDER  = "test_documents"
-OUTPUT_FOLDER = "resultats_json"
-POPPLER_PATH  = r"C:\Users\ilham\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin"
+INPUT_FOLDER  = "test_documents"   # dossier contenant les PDFs/images à analyser
+OUTPUT_FOLDER = "resultats_json"   # dossier où on sauvegarde les JSONs extraits
+POPPLER_PATH  = r"C:\Users\ilham\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin"  # chemin Poppler sur Windows (à adapter)
 
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
 
+# EasyOCR : le moteur qui lit le texte dans les images (modèle français chargé une seule fois)
 print("Initialisation d'EasyOCR...")
 ocr_reader = easyocr.Reader(['fr'])
 
@@ -49,15 +50,8 @@ Y_TOLERANCE_FACTOR = 0.015
 
 def reconstruct_lines(ocr_results, page_width, page_height):
     """
-    Entrée : liste brute EasyOCR [(box, text, prob), ...]
-    Sortie : {
-        'left' : [(y_rel, texte_ligne), ...],  # colonne gauche, triée par Y
-        'right': [(y_rel, texte_ligne), ...],  # colonne droite, triée par Y
-        'full' : [(y_rel, texte_ligne), ...]   # toutes colonnes, triée par Y
-    }
-
-    Les tokens de la même ligne physique (Y proches) et de la même
-    colonne sont fusionnés en une seule chaîne, dans l'ordre X.
+    EasyOCR retourne des morceaux de texte éparpillés sur la page.
+    Cette fonction les regroupe en lignes lisibles, séparées en colonne gauche / droite / complète.
     """
     # Tolérance adaptée à la résolution réelle (pdf2image → 150-300dpi)
     y_tol = max(8, int(page_height * Y_TOLERANCE_FACTOR))
@@ -152,18 +146,8 @@ _BUYER_ANCHOR = re.compile(r'^(Acheteur|[EÉ]metteur)$', re.I)
 
 def detect_layout(left_lines, right_lines):
     """
-    Détecte le layout du document parmi deux types :
-
-    'normal'  → Fournisseur à gauche, Client à droite
-                (devis, facture, bon de commande simple)
-
-    'bc_inv'  → Acheteur/Émetteur à gauche, Fournisseur à droite
-                (bon de commande émis par notre société :
-                 l'émetteur est StepAhead, le destinataire est le fournisseur)
-
-    Critère : "Acheteur" ou "Émetteur" dans left_lines ET
-              "Fournisseur" dans right_lines ET
-              "Fournisseur" absent de left_lines.
+    Détecte si le document est une facture/devis classique (fournisseur à gauche)
+    ou un bon de commande inversé (notre société à gauche, fournisseur à droite).
     """
     left_first_words  = {t.strip().split()[0].upper() for _, t in left_lines  if t.strip()}
     right_first_words = {t.strip().split()[0].upper() for _, t in right_lines if t.strip()}
@@ -279,7 +263,7 @@ _ITEM_RX = re.compile(
 
 def parse_items(full_lines, items_start_y):
     """
-    Extrait les lignes articles à partir de la ligne d'en-tête tableau.
+    Extrait les lignes de produits du tableau (description, quantité, prix unitaire, total).
     """
     line_items = []
     _FINANCIAL_RE = re.compile(r'Total\s*(HT|TTC)|TVA|À\s*PAYER', re.I)
@@ -338,23 +322,27 @@ def parse_financials(right_lines, full_text_fallback):
 # ================================================================== #
 
 def process_document_extraction(image_path):
+    """
+    Fonction principale : prend une image de document et retourne un JSON structuré
+    avec le fournisseur, le client, les articles et les montants.
+    """
     raw_img = cv2.imread(image_path)
     if raw_img is None:
         return None
 
     height, width, _ = raw_img.shape
+
+    # Lance EasyOCR sur l'image pour obtenir tous les blocs de texte détectés
     results = ocr_reader.readtext(raw_img, detail=1)
 
-    # 1. Reconstruction des lignes par colonne
+    # 1. Regroupe les blocs de texte en lignes lisibles par colonne
     lines       = reconstruct_lines(results, width, height)
     left_lines  = lines["left"]
     right_lines = lines["right"]
     full_lines  = lines["full"]
     full_text   = "\n".join(t for _, t in full_lines)
 
-    # 2. Détection du layout pour router vendor/customer correctement
-    # Layout normal  : Fournisseur gauche, Client droite
-    # Layout bc_inv  : Acheteur/Émetteur gauche, Fournisseur droite
+    # 2. Détecte si c'est un document normal ou un BC inversé, pour lire les bons blocs
     layout = detect_layout(left_lines, right_lines)
 
     if layout == "bc_inv":
@@ -369,12 +357,7 @@ def process_document_extraction(image_path):
         customer_col    = right_lines
         customer_anchor = _CUSTOMER_ANCHOR
 
-    # 3. Y de départ du tableau articles
-    # On cherche dans left_lines (colonne gauche) et non full_lines :
-    # dans full_lines, "Produit" est fusionné avec les tokens droite
-    # "Unité P.U. prévu Total HT" → _FINANCIAL_RE skipperait cette ligne
-    # si elle se retrouvait après items_start_y, rendant parse_items aveugle.
-    # Dans left_lines, "Produit" est seul (ou avec "Qté" au pire) → propre.
+    # 3. Cherche à quelle hauteur commence le tableau de produits
     items_start_y = 1.0
     for y_rel, text in left_lines:
         if re.match(r'^Produit', text.strip(), re.I):
@@ -387,8 +370,7 @@ def process_document_extraction(image_path):
                 items_start_y = y_rel
                 break
 
-    # 4. Construction du JSON
-    # parse_customer accepte maintenant une ancre variable selon le layout
+    # 4. Assemble toutes les données extraites dans un dict structuré
     def _parse_customer_with_anchor(col_lines, anchor_re):
         customer = {"name": "Inconnu", "address": "Inconnu", "is_valid": False}
         section = _extract_section_from_col(col_lines, anchor_re)
@@ -405,11 +387,11 @@ def process_document_extraction(image_path):
     line_items = parse_items(full_lines, items_start_y)
     financials = parse_financials(right_lines, full_text)
 
-    # Fallback : si total_ht = 0 mais qu'on a des lignes articles, on le calcule
+    # Si l'OCR n'a pas trouvé le total HT, on le recalcule depuis les lignes articles
     if financials["total_ht"] == 0.0 and line_items:
         financials["total_ht"] = round(sum(item["total_ht"] for item in line_items), 2)
 
-    # Fallback : si total_ttc = 0 mais qu'on a total_ht et tva_amount, on le calcule
+    # Si le TTC est absent, on le recalcule depuis le HT + TVA
     if financials["total_ttc"] == 0.0 and financials["total_ht"] > 0:
         financials["total_ttc"] = round(
             financials["total_ht"] + financials["tva_amount"], 2
@@ -424,13 +406,13 @@ def process_document_extraction(image_path):
         "financials": financials,
     }
 
-    # 5. Type de document
+    # 5. Détecte le type de document (Facture / Devis / Bon de Commande) depuis l'en-tête
     header_text = " ".join(t for _, t in left_lines[:6]).upper()
     if   "FACTURE"  in header_text: data["metadata"]["type"] = "Facture"
     elif "DEVIS"    in header_text: data["metadata"]["type"] = "Devis"
     elif "COMMANDE" in header_text: data["metadata"]["type"] = "Bon de Commande"
 
-    # 6. Numéro de document
+    # 6. Extrait le numéro de document (BC-2024-0001, FAC-..., etc.)
     for pattern in [
         r'(BC-\d{4}-\d{4})',
         r'(DEV-\d{4}-\d{4})',
@@ -442,7 +424,7 @@ def process_document_extraction(image_path):
             data["doc_info"]["number"] = m.group(1)
             break
 
-    # 7. Dates — avec labels explicites pour ne pas capturer "Valable jusqu'au"
+    # 7. Extrait la date d'émission et la date d'échéance
     m_emit = re.search(
         r"Date\s+d'[eé]mission\s*[:\s]+(\d{2}/\d{2}/\d{4})", full_text, re.I
     )
