@@ -1,0 +1,3 @@
+﻿split,bundle_type,bundle_name,supplier_id,scenario,expected_status,expected_flags,path
+val,coherent,supplier_005,supplier_005,normal_pdf_clean,valid,[],data\val\coherent\supplier_005
+val,incoherent,bundle_005_price_mismatch,supplier_005,price_mismatch,invalid,"[""price_mismatch""]",data\val\incoherent\bundle_005_price_mismatch

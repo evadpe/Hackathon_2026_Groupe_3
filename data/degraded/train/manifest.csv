@@ -1,0 +1,13 @@
+﻿split,bundle_type,bundle_name,supplier_id,scenario,expected_status,expected_flags,path
+train,coherent,supplier_003,supplier_003,normal_pdf_clean,valid,[],data\train\coherent\supplier_003
+train,coherent,supplier_004,supplier_004,normal_pdf_clean,valid,[],data\train\coherent\supplier_004
+train,coherent,supplier_006,supplier_006,normal_pdf_clean,valid,[],data\train\coherent\supplier_006
+train,coherent,supplier_007,supplier_007,normal_pdf_clean,valid,[],data\train\coherent\supplier_007
+train,coherent,supplier_008,supplier_008,normal_pdf_clean,valid,[],data\train\coherent\supplier_008
+train,coherent,supplier_009,supplier_009,normal_pdf_clean,valid,[],data\train\coherent\supplier_009
+train,coherent,supplier_010,supplier_010,normal_pdf_clean,valid,[],data\train\coherent\supplier_010
+train,incoherent,bundle_003_product_mismatch,supplier_003,product_mismatch,invalid,"[""product_mismatch""]",data\train\incoherent\bundle_003_product_mismatch
+train,incoherent,bundle_004_supplier_mismatch,supplier_004,supplier_mismatch,invalid,"[""supplier_mismatch""]",data\train\incoherent\bundle_004_supplier_mismatch
+train,incoherent,bundle_006_quantity_mismatch,supplier_006,quantity_mismatch,invalid,"[""quantity_mismatch""]",data\train\incoherent\bundle_006_quantity_mismatch
+train,incoherent,bundle_007_product_mismatch,supplier_007,product_mismatch,invalid,"[""product_mismatch""]",data\train\incoherent\bundle_007_product_mismatch
+train,incoherent,bundle_008_supplier_mismatch,supplier_008,supplier_mismatch,invalid,"[""supplier_mismatch""]",data\train\incoherent\bundle_008_supplier_mismatch

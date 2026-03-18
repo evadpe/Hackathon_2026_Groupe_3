@@ -192,8 +192,8 @@ def create_quote_pdf(quote_data: dict, output_path: Path) -> None:
     c.drawString(320, height - 500, f"Total TTC : {quote_data['amount_ttc']:.2f} EUR")
 
     c.setFont("Helvetica-Oblique", 9)
-    c.drawString(50, 70, "Ce devis est valable 30 jours à compter de sa date d'émission.")
-    c.drawString(50, 50, "Document synthétique généré automatiquement pour le projet étudiant.")
+    c.drawString(50, 70, "")
+    c.drawString(50, 50, "")
 
     c.save()
 
@@ -254,7 +254,7 @@ def create_invoice_pdf(invoice_data: dict, output_path: Path) -> None:
     c.drawString(320, height - 500, f"Total TTC : {invoice_data['amount_ttc']:.2f} EUR")
 
     c.setFont("Helvetica-Oblique", 9)
-    c.drawString(50, 50, "Document synthétique généré automatiquement pour le projet étudiant.")
+    c.drawString(50, 50, "")
 
     c.save()
 

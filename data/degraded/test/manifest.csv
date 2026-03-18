@@ -1,0 +1,5 @@
+﻿split,bundle_type,bundle_name,supplier_id,scenario,expected_status,expected_flags,path
+test,coherent,supplier_001,supplier_001,normal_pdf_clean,valid,[],data\test\coherent\supplier_001
+test,coherent,supplier_002,supplier_002,normal_pdf_clean,valid,[],data\test\coherent\supplier_002
+test,incoherent,bundle_001_price_mismatch,supplier_001,price_mismatch,invalid,"[""price_mismatch""]",data\test\incoherent\bundle_001_price_mismatch
+test,incoherent,bundle_002_quantity_mismatch,supplier_002,quantity_mismatch,invalid,"[""quantity_mismatch""]",data\test\incoherent\bundle_002_quantity_mismatch

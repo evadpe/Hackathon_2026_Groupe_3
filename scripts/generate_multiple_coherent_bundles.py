@@ -130,8 +130,8 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
     c.drawString(320, height - 500, f"Total TTC : {order_data['amount_ttc']:.2f} EUR")
 
     c.setFont("Helvetica-Oblique", 9)
-    c.drawString(50, 70, "Bon de commande synthétique généré automatiquement pour le projet étudiant.")
-    c.drawString(50, 50, "Document servant de base au rapprochement avec le devis et la facture.")
+    c.drawString(50, 70, "")
+    c.drawString(50, 50, "")
 
     c.save()
 

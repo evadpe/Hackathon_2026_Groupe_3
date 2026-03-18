@@ -1,0 +1,12 @@
+{
+  "bundle_id": "bundle_supplier_002",
+  "scenario": "normal_pdf_clean",
+  "source_supplier_id": "supplier_002",
+  "expected_flags": [],
+  "expected_status": "valid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}

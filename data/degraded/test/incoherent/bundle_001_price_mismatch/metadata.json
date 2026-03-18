@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_001",
+  "scenario": "price_mismatch",
+  "source_supplier_id": "supplier_001",
+  "source_supplier_name": "Ledoux SA",
+  "expected_flags": [
+    "price_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}
