@@ -14,17 +14,20 @@ Organisation logique :
 
 import json
 import mimetypes
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
+from airflow_client import is_airflow_enabled
 from models import BonCommande, Devis, Facture
 from ocr_engine import pdf_bytes_to_ocr_dict
+from pipeline_service import DocumentPipelineService
 from run_ocr_test import adapter_ocr
 from storage import get_storage
 from verifier import VerificateurDocuments
@@ -40,6 +43,7 @@ app.add_middleware(
 )
 
 storage = get_storage()
+pipeline_service = DocumentPipelineService(storage)
 documents_db: Dict[str, dict] = {}
 
 OCR_TYPE_MAP = {
@@ -114,6 +118,16 @@ def _cache_and_save_document(document: dict) -> dict:
     documents_db[document["id"]] = document
     storage.write_json(_metadata_path(document["id"]), document)
     return document
+
+
+def _require_internal_token(request: Request) -> None:
+    expected_token = os.getenv("INTERNAL_API_TOKEN", "").strip()
+    if not expected_token:
+        return
+
+    provided_token = request.headers.get("X-Internal-Token", "").strip()
+    if provided_token != expected_token:
+        raise HTTPException(status_code=401, detail="Acces interne non autorise.")
 
 
 def _persist_silver_document(doc_id: str, raw_ocr: dict, source_path: str) -> str:
@@ -209,8 +223,7 @@ async def get_stored_file(storage_path: str):
 @app.post("/documents/upload")
 async def upload_documents(files: List[UploadFile] = File(...)):
     session_id = uuid.uuid4().hex[:8]
-    docs_by_type: Dict[str, dict] = {}
-    created_docs: List[dict] = []
+    stored_files: List[dict[str, str]] = []
 
     for upload in files:
         suffix = Path(upload.filename or "file").suffix.lower()
@@ -218,125 +231,14 @@ async def upload_documents(files: List[UploadFile] = File(...)):
         content = await upload.read()
 
         raw_path = storage.write_bytes(_raw_upload_path(session_id, file_key), content)
-        file_url = _make_file_url(raw_path)
         filename = upload.filename or file_key
+        stored_files.append({"filename": filename, "raw_path": raw_path})
 
-        if suffix == ".json":
-            try:
-                raw_ocr = json.loads(content)
-            except json.JSONDecodeError:
-                continue
+    if is_airflow_enabled():
+        pipeline_service.create_pending_session(session_id, stored_files)
+        return pipeline_service.build_bronze_placeholders(session_id, stored_files)
 
-            type_interne = _detecter_type(raw_ocr)
-            if type_interne == "inconnu":
-                continue
-
-            docs_by_type[type_interne] = {
-                "raw_ocr": raw_ocr,
-                "filename": filename,
-                "file_url": file_url,
-                "raw_path": raw_path,
-            }
-        elif suffix == ".pdf":
-            raw_ocr = pdf_bytes_to_ocr_dict(content)
-
-            if raw_ocr is not None:
-                type_interne = _detecter_type(raw_ocr)
-                if type_interne != "inconnu":
-                    docs_by_type[type_interne] = {
-                        "raw_ocr": raw_ocr,
-                        "filename": filename,
-                        "file_url": file_url,
-                        "raw_path": raw_path,
-                    }
-                else:
-                    doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
-                    silver_path = _persist_silver_document(doc_id, raw_ocr, raw_path)
-                    admin_doc = _make_admin_doc(
-                        doc_id=doc_id,
-                        filename=filename,
-                        type_frontend="invoice",
-                        extracted_data=_ocr_to_extracted_data(raw_ocr, "invoice"),
-                        anomalies=[{
-                            "field": "type",
-                            "message": "Type de document non reconnu (Facture / Bon de Commande / Devis attendu).",
-                            "severity": "warning",
-                        }],
-                        file_url=file_url,
-                        raw_path=raw_path,
-                        silver_path=silver_path,
-                    )
-                    _cache_and_save_document(admin_doc)
-                    created_docs.append(admin_doc)
-            else:
-                doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
-                admin_doc = _make_admin_doc(
-                    doc_id=doc_id,
-                    filename=filename,
-                    type_frontend="invoice",
-                    extracted_data={"note": "Extraction OCR échouée", "fichier": filename},
-                    anomalies=[{
-                        "field": "ocr",
-                        "message": "L'OCR n'a pas pu extraire les données du PDF.",
-                        "severity": "error",
-                    }],
-                    file_url=file_url,
-                    raw_path=raw_path,
-                )
-                _cache_and_save_document(admin_doc)
-                created_docs.append(admin_doc)
-
-    for type_interne, payload in docs_by_type.items():
-        raw_ocr = payload["raw_ocr"]
-        type_frontend = TYPE_TO_FRONTEND[type_interne]
-        doc_id = f"{type_interne.upper()}-{session_id}"
-        silver_path = _persist_silver_document(doc_id, raw_ocr, payload["raw_path"])
-
-        admin_doc = _make_admin_doc(
-            doc_id=doc_id,
-            filename=payload["filename"],
-            type_frontend=type_frontend,
-            extracted_data=_ocr_to_extracted_data(raw_ocr, type_frontend),
-            anomalies=[],
-            file_url=payload["file_url"],
-            raw_path=payload["raw_path"],
-            silver_path=silver_path,
-        )
-        _cache_and_save_document(admin_doc)
-        created_docs.append(admin_doc)
-
-    if "bon_commande" in docs_by_type and "facture" in docs_by_type:
-        try:
-            bon_commande = BonCommande.model_validate(adapter_ocr(docs_by_type["bon_commande"]["raw_ocr"]))
-            facture = Facture.model_validate(adapter_ocr(docs_by_type["facture"]["raw_ocr"]))
-            devis = None
-            if "devis" in docs_by_type:
-                devis = Devis.model_validate(adapter_ocr(docs_by_type["devis"]["raw_ocr"]))
-
-            rapport = VerificateurDocuments().verifier(bon_commande, facture, devis)
-            fac_doc_id = f"FACTURE-{session_id}"
-
-            anomalies = [
-                {
-                    "field": alerte.reference_ligne or alerte.categorie,
-                    "message": alerte.message,
-                    "severity": NIVEAU_TO_SEVERITY.get(alerte.niveau.value, "warning"),
-                }
-                for alerte in rapport.alertes
-            ]
-
-            facture_doc = _load_document(fac_doc_id)
-            if facture_doc is not None:
-                facture_doc["anomalies"] = anomalies
-                _cache_and_save_document(facture_doc)
-                for doc in created_docs:
-                    if doc["id"] == fac_doc_id:
-                        doc["anomalies"] = anomalies
-                        break
-        except Exception as exc:
-            print(f"[Vérification] Erreur : {exc}")
-
-    return created_docs
+    return pipeline_service.process_session_upload(session_id, stored_files)
 
 
 @app.get("/documents/pending")
@@ -379,6 +281,56 @@ async def get_document(doc_id: str):
     if document is None:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' introuvable.")
     return document
+
+
+@app.get("/internal/pipelines/pending-sessions")
+async def get_pending_sessions(request: Request):
+    _require_internal_token(request)
+    return pipeline_service.list_sessions(status="pending")
+
+
+@app.post("/internal/pipelines/claim-session")
+async def claim_pending_session(payload: dict[str, Any], request: Request):
+    _require_internal_token(request)
+    session_id = payload.get("sessionId") or payload.get("session_id")
+    dag_run_id = payload.get("dagRunId") or payload.get("dag_run_id")
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="sessionId manquant.")
+
+    session_state = pipeline_service.load_session_state(session_id)
+    if session_state is None:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' introuvable.")
+
+    claimed_session = pipeline_service.claim_session(session_id, dag_run_id=dag_run_id)
+    return {
+        "claimed": claimed_session is not None and claimed_session.get("status") == "processing",
+        "session": claimed_session or session_state,
+    }
+
+
+@app.post("/internal/pipelines/process-session")
+async def process_pending_session(payload: dict[str, Any], request: Request):
+    _require_internal_token(request)
+    session_id = payload.get("sessionId") or payload.get("session_id")
+    stored_files = payload.get("files") or []
+    dag_run_id = payload.get("dagRunId") or payload.get("dag_run_id")
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="sessionId manquant.")
+    if not isinstance(stored_files, list) or not stored_files:
+        raise HTTPException(status_code=400, detail="files manquant.")
+
+    try:
+        documents = pipeline_service.process_session_upload(session_id, stored_files)
+        pipeline_service.complete_session(session_id, documents, dag_run_id=dag_run_id)
+        return documents
+    except Exception as exc:
+        pipeline_service.fail_session(session_id, str(exc), dag_run_id=dag_run_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Echec du traitement de la session '{session_id}'.",
+        ) from exc
 
 
 @app.get("/health")
