@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from models import BonCommande, Devis, Facture
 from run_ocr_test import adapter_ocr
 from verifier import VerificateurDocuments
+from ocr_engine import pdf_to_ocr_dict
 
 # ─── App & CORS ──────────────────────────────────────────────────────────────
 
@@ -162,19 +163,42 @@ async def upload_documents(files: List[UploadFile] = File(...)):
             docs_by_type[type_interne]    = raw_ocr
             saved_filenames[type_interne] = file_url
 
-        # ── Fichier PDF (OCR non intégré : stub) ─────────────────────────────
+        # ── Fichier PDF (OCR via EasyOCR) ────────────────────────────────────
         elif suffix == ".pdf":
-            doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
-            admin_doc = _make_admin_doc(
-                doc_id      = doc_id,
-                filename    = upload.filename or file_key,
-                type_frontend = "invoice",
-                extracted_data = {"note": "OCR en attente", "fichier": upload.filename},
-                anomalies   = [],
-                file_url    = file_url,
-            )
-            documents_db[doc_id] = admin_doc
-            created_docs.append(admin_doc)
+            raw_ocr = pdf_to_ocr_dict(str(dest))
+
+            if raw_ocr is not None:
+                type_interne = _detecter_type(raw_ocr)
+                if type_interne != "inconnu":
+                    # OCR réussi + type reconnu → traitement dans la boucle JSON
+                    docs_by_type[type_interne]    = raw_ocr
+                    saved_filenames[type_interne] = file_url
+                else:
+                    # Type non reconnu → on affiche quand même les données extraites
+                    doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
+                    admin_doc = _make_admin_doc(
+                        doc_id        = doc_id,
+                        filename      = upload.filename or file_key,
+                        type_frontend = "invoice",
+                        extracted_data = _ocr_to_extracted_data(raw_ocr, "invoice"),
+                        anomalies     = [{"field": "type", "message": "Type de document non reconnu (Facture / Bon de Commande / Devis attendu).", "severity": "warning"}],
+                        file_url      = file_url,
+                    )
+                    documents_db[doc_id] = admin_doc
+                    created_docs.append(admin_doc)
+            else:
+                # OCR échoué → stub avec erreur explicite
+                doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
+                admin_doc = _make_admin_doc(
+                    doc_id        = doc_id,
+                    filename      = upload.filename or file_key,
+                    type_frontend = "invoice",
+                    extracted_data = {"note": "Extraction OCR échouée", "fichier": upload.filename},
+                    anomalies     = [{"field": "ocr", "message": "L'OCR n'a pas pu extraire les données du PDF.", "severity": "error"}],
+                    file_url      = file_url,
+                )
+                documents_db[doc_id] = admin_doc
+                created_docs.append(admin_doc)
 
     # ── Créer un AdminDocument par fichier JSON reçu ─────────────────────────
     for type_interne, raw_ocr in docs_by_type.items():

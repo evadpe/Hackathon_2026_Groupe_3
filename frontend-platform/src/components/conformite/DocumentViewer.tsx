@@ -7,8 +7,11 @@ interface Props {
   filename?: string;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export default function DocumentViewer({ fileUrl, filename }: Props) {
   const [isLoading, setIsLoading] = useState(true);
+  const fullUrl = fileUrl?.startsWith('/') ? `${API_BASE}${fileUrl}` : fileUrl;
 
   return (
     <div className="flex flex-col h-full bg-gray-100 border-r">
@@ -31,9 +34,9 @@ export default function DocumentViewer({ fileUrl, filename }: Props) {
             <ZoomOut size={18} />
           </button>
           <div className="w-px h-4 bg-gray-300 mx-1" />
-          <a 
-            href={fileUrl} 
-            target="_blank" 
+          <a
+            href={fullUrl}
+            target="_blank"
             rel="noopener noreferrer"
             className="p-2 hover:bg-gray-100 rounded-md text-gray-500"
           >
@@ -44,7 +47,7 @@ export default function DocumentViewer({ fileUrl, filename }: Props) {
 
       {/* Zone d'affichage du document */}
       <div className="flex-1 relative overflow-hidden">
-        {fileUrl ? (
+        {fullUrl ? (
           <>
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -55,7 +58,7 @@ export default function DocumentViewer({ fileUrl, filename }: Props) {
               </div>
             )}
             <iframe
-              src={`${fileUrl}#toolbar=0`}
+              src={`${fullUrl}#toolbar=0`}
               className="w-full h-full border-none"
               onLoad={() => setIsLoading(false)}
               title="Afficheur de document"

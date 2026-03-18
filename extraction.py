@@ -207,10 +207,10 @@ def parse_vendor(col_lines):
         vendor["address"] = ", ".join(addr_parts)
 
     # Identifiants légaux
-    m = re.search(r'SIREN\s*[:\s]*(\d{9})\b',  full_text, re.I)
+    m = re.search(r'SIREN\s*[:\s]*(\d{7,9})\b',  full_text, re.I)
     if m: vendor["siren"] = m.group(1)
 
-    m = re.search(r'SIRET\s*[:\s]*(\d{14})\b', full_text, re.I)
+    m = re.search(r'SIRET\s*[:\s]*(\d{9,14})\b', full_text, re.I)
     if m: vendor["siret"] = m.group(1)
 
     m = re.search(r'(?:N[°o]\.?\s*)?TVA\s*[:\s]*(FR\s?\d{11})', full_text, re.I)
@@ -219,7 +219,7 @@ def parse_vendor(col_lines):
     # Fallback SIRET depuis SIREN
     if vendor["siret"] == "Inconnu" and vendor["siren"] != "Inconnu":
         siren = vendor["siren"]
-        m = re.search(rf'({re.escape(siren)}\d{{5}})', full_text)
+        m = re.search(rf'({re.escape(siren)}\d{{1,5}})', full_text)
         if m: vendor["siret"] = m.group(1)
 
     return vendor
@@ -271,7 +271,7 @@ def parse_customer(col_lines):
 _ITEM_RX = re.compile(
     r'(.+?)\s+'
     r'(\d+)\s+'
-    r'(m[²2]|paire|unit[eé]s?|pcs?|kg|h(?:eure)?)\s+'
+    r'(m[²2?]|m[eè.][tT]?res?|m\.|paires?|unit[eé]s?|pcs?|kg|h(?:eure)?s?)\s+'
     r'(\d+[\.,]\d{2})\s*(?:EUR|€)?'
     r'(?:\s+(\d+[\.,]\d{2}))?',   # total_ht optionnel
     re.I
@@ -402,13 +402,26 @@ def process_document_extraction(image_path):
         customer["is_valid"] = "STEPAHEAD" in customer["name"].upper()
         return customer
 
+    line_items = parse_items(full_lines, items_start_y)
+    financials = parse_financials(right_lines, full_text)
+
+    # Fallback : si total_ht = 0 mais qu'on a des lignes articles, on le calcule
+    if financials["total_ht"] == 0.0 and line_items:
+        financials["total_ht"] = round(sum(item["total_ht"] for item in line_items), 2)
+
+    # Fallback : si total_ttc = 0 mais qu'on a total_ht et tva_amount, on le calcule
+    if financials["total_ttc"] == 0.0 and financials["total_ht"] > 0:
+        financials["total_ttc"] = round(
+            financials["total_ht"] + financials["tva_amount"], 2
+        )
+
     data = {
         "metadata":   {"type": "Inconnu", "file": os.path.basename(image_path)},
         "vendor":     parse_vendor(vendor_lines),
         "customer":   _parse_customer_with_anchor(customer_col, customer_anchor),
         "doc_info":   {"number": "Inconnu", "date": "Inconnue", "due_date": "Inconnue"},
-        "line_items": parse_items(full_lines, items_start_y),
-        "financials": parse_financials(right_lines, full_text),
+        "line_items": line_items,
+        "financials": financials,
     }
 
     # 5. Type de document
