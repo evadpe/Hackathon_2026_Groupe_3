@@ -1,0 +1,62 @@
+{
+  "_commentaire": "Facture avec 5 erreurs intentionnelles pour la démonstration",
+  "numero": "FAC-2025-4471",
+  "date": "2025-03-10",
+  "fournisseur": {
+    "nom": "CuirPlus SARL",
+    "siret": "45123456789012"
+  },
+  "lignes": [
+    {
+      "reference": "SEM-GOM-42",
+      "description": "Semelles en gomme naturelle noire, taille 38",
+      "categorie": "semelles_talons",
+      "quantite": 100,
+      "unite": "paire",
+      "pointure": 38,
+      "couleur": "noir",
+      "prix_unitaire": 5.50,
+      "montant_ht": 550.00,
+      "_erreurs": ["POINTURE 38 au lieu de 42", "PRIX 5.50 au lieu de 5.00"]
+    },
+    {
+      "reference": "CUIR-VACH-01",
+      "description": "Cuir vachette pleine fleur, coloris bleu marine",
+      "categorie": "cuir_textile",
+      "quantite": 47,
+      "unite": "m2",
+      "couleur": "bleu marine",
+      "prix_unitaire": 12.00,
+      "montant_ht": 564.00,
+      "_erreurs": ["COULEUR bleu marine au lieu de noir", "QUANTITE 47 au lieu de 50 (dans tolérance 5% mais couleur NOK)"]
+    },
+    {
+      "reference": "FIL-NOIR-100",
+      "description": "Fil de couture polyester noir résistant",
+      "categorie": "fournitures",
+      "quantite": 5000,
+      "unite": "metre",
+      "couleur": "noir",
+      "prix_unitaire": 0.016,
+      "montant_ht": 80.00,
+      "_erreurs": ["Aucune erreur : 10 rouleaux × 500m = 5000m, montant identique — CONVERSION CORRECTE"]
+    },
+    {
+      "reference": "OEI-BRZ-4MM",
+      "description": "Œillets bronze 4mm pour lacets de chaussures",
+      "categorie": "fournitures",
+      "quantite": 1000,
+      "unite": "unite",
+      "prix_unitaire": 0.02,
+      "montant_ht": 20.00,
+      "_erreurs": ["ERREUR DE ZERO : 1000 au lieu de 10 000"]
+    }
+  ],
+  "frais_port": 45.00,
+  "franco_de_port": false,
+  "total_ht": 1259.00,
+  "tva_taux": 20.0,
+  "tva_montant": 251.80,
+  "total_ttc": 1510.80,
+  "_erreurs_frais_port": ["FRAIS DE PORT 45€ alors que le devis stipule franco de port"]
+}

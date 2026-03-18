@@ -1,0 +1,31 @@
+{
+  "date_verification": "2026-03-18T09:10:07.024416",
+  "numero_bon_commande": "BC-2026-1652",
+  "numero_devis": "DEV-2026-9184",
+  "numero_facture": "FAC-2026-7068",
+  "statut": "NON_CONFORME",
+  "alertes": [
+    {
+      "niveau": "ERREUR",
+      "categorie": "TOTAL",
+      "reference_ligne": null,
+      "message": "Total HT incohérent sur le facture",
+      "valeur_attendue": "0.00 EUR (calculé)",
+      "valeur_recue": "3590.73 EUR (déclaré)",
+      "ecart": "+3590.73 EUR"
+    },
+    {
+      "niveau": "ERREUR",
+      "categorie": "TOTAL",
+      "reference_ligne": null,
+      "message": "Total HT incohérent sur le devis",
+      "valeur_attendue": "0.00 EUR (calculé)",
+      "valeur_recue": "3590.73 EUR (déclaré)",
+      "ecart": "+3590.73 EUR"
+    }
+  ],
+  "nb_erreurs": 2,
+  "nb_avertissements": 0,
+  "nb_infos": 0,
+  "analyse_semantique": "Analyse semantique OK : 0 ligne(s) verifiee(s), aucune incoherence de couleur ou de matiere detectee."
+}
