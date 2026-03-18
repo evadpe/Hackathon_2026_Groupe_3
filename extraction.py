@@ -282,8 +282,8 @@ def parse_items(full_lines, items_start_y):
             continue
         qty   = int(m.group(2))
         pu_ht = _clean_float(m.group(4))
-        # total_ht : groupe 5 optionnel — calculé si absent
-        total_ht = _clean_float(m.group(5)) if m.group(5) else round(qty * pu_ht, 2)
+        # total_ht : groupe 5 optionnel — null si absent (on ne calcule pas, on lit seulement)
+        total_ht = _clean_float(m.group(5)) if m.group(5) else None
         line_items.append({
             "description": desc,
             "qty":         qty,
@@ -498,15 +498,8 @@ def process_document_extraction(image_path):
     line_items = parse_items(full_lines, items_start_y)
     financials = parse_financials(right_lines, full_text)
 
-    # Si l'OCR n'a pas trouvé le total HT, on le recalcule depuis les lignes articles
-    if financials["total_ht"] == 0.0 and line_items:
-        financials["total_ht"] = round(sum(item["total_ht"] for item in line_items), 2)
-
-    # Si le TTC est absent, on le recalcule depuis le HT + TVA
-    if financials["total_ttc"] == 0.0 and financials["total_ht"] > 0:
-        financials["total_ttc"] = round(
-            financials["total_ht"] + financials["tva_amount"], 2
-        )
+    # On ne recalcule pas les montants manquants : si l'OCR ne les trouve pas
+    # (zone masquée, flou trop fort), les champs restent à 0.0 — on lit, on ne calcule pas.
 
     data = {
         "metadata":   {"type": "Inconnu", "file": os.path.basename(image_path)},
