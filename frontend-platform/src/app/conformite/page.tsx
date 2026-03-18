@@ -1,15 +1,21 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import UploadZone from '@/components/conformite/UploadZone';
 import DocumentList from '@/components/conformite/DocumentList';
 import DocumentViewer from '@/components/conformite/DocumentViewer';
 import ValidationForm from '@/components/conformite/ValidationForm';
 import { AdminDocument } from '@/types';
-import { allMockDocuments } from '@/constants/mockDocuments';
+import { docService } from '@/services/docService';
 
 export default function ConformitePage() {
-  const [documents, setDocuments] = useState<AdminDocument[]>(allMockDocuments);
+  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+
+  useEffect(() => {
+    docService.getPendingDocs()
+      .then(setDocuments)
+      .catch((err) => console.error("Erreur chargement documents", err));
+  }, []);
   const [selectedDoc, setSelectedDoc] = useState<AdminDocument | null>(null);
   const [showUpload, setShowUpload] = useState(true);
 

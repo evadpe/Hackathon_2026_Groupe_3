@@ -1,7 +1,7 @@
 
 
 "use client";
-import { Save, AlertTriangle, CheckCircle2, Loader2, XCircle, ShieldCheck } from "lucide-react";
+import { Save, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { AdminDocument } from "@/types";
 import { getFieldType } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -115,16 +115,27 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Envoi des données corrigées vers la Zone Gold
-      // await docService.validateDoc(document.id, formData);
-
-      console.log("🟢 FormData mis à jour:", formData);
-
-      // if (onSuccess) onSuccess();
-      // alert("✅ Document validé et envoyé en Zone Gold !");
+      await docService.validateDoc(document.id, formData);
+      if (onSuccess) onSuccess();
+      alert("✅ Document validé et envoyé en Zone Gold !");
     } catch (error) {
       console.error("❌ Erreur lors de la validation", error);
       alert("❌ Erreur lors de la validation");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReject = async () => {
+    const reason = prompt("Raison du rejet (optionnel) :");
+    if (reason === null) return; // annulé
+    setIsSubmitting(true);
+    try {
+      await docService.rejectDoc(document.id, reason || undefined);
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error("❌ Erreur lors du rejet", error);
+      alert("❌ Erreur lors du rejet");
     } finally {
       setIsSubmitting(false);
     }
@@ -285,7 +296,9 @@ export default function ValidationForm({ document, onSuccess }: Props) {
       <div className="p-6 border-t bg-gray-50 grid grid-cols-2 gap-3">
         <button
           type="button"
-          className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-white text-gray-600 text-sm font-medium transition-colors"
+          onClick={handleReject}
+          disabled={isSubmitting}
+          className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-white text-gray-600 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Rejeter
         </button>

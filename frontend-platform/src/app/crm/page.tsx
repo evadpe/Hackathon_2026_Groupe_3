@@ -1,32 +1,21 @@
 "use client";
+import { useState, useEffect } from 'react';
 import SupplierTable from '@/components/crm/SupplierTable';
 import { AdminDocument } from '@/types';
 import { Plus, Download, Filter } from 'lucide-react';
-
-const GOLD_DOCS_MOCK: AdminDocument[] = [
-  {
-    id: "1",
-    filename: "inv_001.pdf",
-    fileUrl: "#",
-    type: "invoice",
-    status: "gold",
-    uploadDate: "2026-03-10",
-    extractedData: { companyName: "Microsoft France", siren: "327733184", amountTTC: 14500.00 },
-    anomalies: []
-  },
-  {
-    id: "2",
-    filename: "inv_002.pdf",
-    fileUrl: "#",
-    type: "invoice",
-    status: "gold",
-    uploadDate: "2026-03-12",
-    extractedData: { companyName: "OVH Cloud", siren: "435147123", amountTTC: 890.50 },
-    anomalies: []
-  }
-];
+import { docService } from '@/services/docService';
 
 export default function CRMPage() {
+  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    docService.getGoldDocs()
+      .then(setDocuments)
+      .catch((err) => console.error("Erreur chargement Zone Gold", err))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -60,7 +49,11 @@ export default function CRMPage() {
             <Filter size={20} />
           </button>
         </div>
-        <SupplierTable documents={GOLD_DOCS_MOCK} />
+        {loading ? (
+          <p className="text-sm text-gray-400 py-8 text-center">Chargement...</p>
+        ) : (
+          <SupplierTable documents={documents} />
+        )}
       </div>
     </div>
   );
