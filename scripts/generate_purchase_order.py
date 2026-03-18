@@ -36,7 +36,10 @@ def generate_purchase_order_data(supplier: pd.Series) -> dict:
     quantity = random.randint(50, 500)
     unit = random.choice(["m²", "paire", "unité", "mètre"])
     expected_unit_price = round(random.uniform(2.0, 25.0), 2)
-    expected_amount_ht = round(quantity * expected_unit_price, 2)
+
+    amount_ht = round(quantity * expected_unit_price, 2)
+    amount_tva = round(amount_ht * 0.20, 2)
+    amount_ttc = round(amount_ht + amount_tva, 2)
 
     return {
         "purchase_order_number": generate_purchase_order_number(),
@@ -67,7 +70,9 @@ def generate_purchase_order_data(supplier: pd.Series) -> dict:
         "quantity": quantity,
         "unit": unit,
         "expected_unit_price": expected_unit_price,
-        "expected_amount_ht": expected_amount_ht,
+        "amount_ht": amount_ht,
+        "amount_tva": amount_tva,
+        "amount_ttc": amount_ttc,
         "currency": "EUR",
     }
 
@@ -76,7 +81,7 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     c = canvas.Canvas(str(output_path), pagesize=A4)
-    width, height = A4
+    _, height = A4
 
     # Titre
     c.setFont("Helvetica-Bold", 20)
@@ -87,7 +92,7 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
     c.drawString(50, height - 90, f"Numéro : {order_data['purchase_order_number']}")
     c.drawString(50, height - 110, f"Date : {order_data['issue_date']}")
 
-    # Notre entreprise = émetteur
+    # Acheteur / Émetteur
     c.setFont("Helvetica-Bold", 12)
     c.drawString(50, height - 160, "Acheteur / Émetteur")
     c.setFont("Helvetica", 10)
@@ -127,12 +132,22 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
     c.drawString(260, height - 380, str(order_data["quantity"]))
     c.drawString(310, height - 380, str(order_data["unit"]))
     c.drawString(380, height - 380, f"{order_data['expected_unit_price']:.2f} EUR")
-    c.drawString(470, height - 380, f"{order_data['expected_amount_ht']:.2f} EUR")
+    c.drawString(470, height - 380, f"{order_data['amount_ht']:.2f} EUR")
+
+    # Totaux
+    c.line(300, height - 430, 545, height - 430)
+
+    c.setFont("Helvetica", 11)
+    c.drawString(320, height - 455, f"Total HT : {order_data['amount_ht']:.2f} EUR")
+    c.drawString(320, height - 475, f"TVA 20% : {order_data['amount_tva']:.2f} EUR")
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(320, height - 500, f"Total TTC : {order_data['amount_ttc']:.2f} EUR")
 
     # Pied
     c.setFont("Helvetica-Oblique", 9)
-    c.drawString(50, 70, "")
-    c.drawString(50, 50, "")
+    c.drawString(50, 70, "Bon de commande synthétique généré automatiquement pour le projet étudiant.")
+    c.drawString(50, 50, "Document servant de base au rapprochement avec le devis et la facture.")
 
     c.save()
 
