@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_003",
+  "scenario": "product_mismatch",
+  "source_supplier_id": "supplier_003",
+  "source_supplier_name": "Renaud",
+  "expected_flags": [
+    "product_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_004",
+  "scenario": "supplier_mismatch",
+  "source_supplier_id": "supplier_004",
+  "source_supplier_name": "Devaux",
+  "expected_flags": [
+    "supplier_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}

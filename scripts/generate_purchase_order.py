@@ -146,8 +146,8 @@ def create_purchase_order_pdf(order_data: dict, output_path: Path) -> None:
 
     # Pied
     c.setFont("Helvetica-Oblique", 9)
-    c.drawString(50, 70, "Bon de commande synthétique généré automatiquement pour le projet étudiant.")
-    c.drawString(50, 50, "Document servant de base au rapprochement avec le devis et la facture.")
+    c.drawString(50, 70, "")
+    c.drawString(50, 50, "")
 
     c.save()
 
@@ -161,16 +161,16 @@ def main() -> None:
     if df.empty:
         raise ValueError("Le fichier suppliers.csv est vide.")
 
-    supplier = df.iloc[0]
-    supplier_id = supplier["supplier_id"]
+    # Générer pour chaque fournisseur
+    for _, supplier in df.iterrows():
+        order_data = generate_purchase_order_data(supplier)
 
-    order_data = generate_purchase_order_data(supplier)
+        # Créer le bon de commande et le sauvegarder dans un dossier unique
+        output_path = DOCUMENTS_DIR / str(supplier["supplier_id"]) / "purchase_order.pdf"
+        create_purchase_order_pdf(order_data, output_path)
 
-    output_path = DOCUMENTS_DIR / supplier_id / "purchase_order.pdf"
-    create_purchase_order_pdf(order_data, output_path)
-
-    print("Bon de commande généré avec succès :")
-    print(output_path)
+        print(f"Bon de commande généré pour {supplier['company_name']} :")
+        print(output_path)
 
 
 if __name__ == "__main__":

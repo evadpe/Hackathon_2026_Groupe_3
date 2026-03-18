@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_007",
+  "scenario": "product_mismatch",
+  "source_supplier_id": "supplier_007",
+  "source_supplier_name": "Martinez",
+  "expected_flags": [
+    "product_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}

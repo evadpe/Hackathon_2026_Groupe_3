@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_002",
+  "scenario": "quantity_mismatch",
+  "source_supplier_id": "supplier_002",
+  "source_supplier_name": "Chevalier",
+  "expected_flags": [
+    "quantity_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "bundle_id": "bundle_008",
+  "scenario": "supplier_mismatch",
+  "source_supplier_id": "supplier_008",
+  "source_supplier_name": "Perrin S.A.R.L.",
+  "expected_flags": [
+    "supplier_mismatch"
+  ],
+  "expected_status": "invalid",
+  "documents": [
+    "purchase_order.pdf",
+    "quote.pdf",
+    "invoice.pdf"
+  ]
+}
