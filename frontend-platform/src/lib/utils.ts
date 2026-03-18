@@ -8,15 +8,40 @@ export function cn(...inputs: ClassValue[]) {
 
 
 export const getFieldType = (key: string, value: any): 'date' | 'number' | 'text' => {
-  const lowercaseKey = key.toLowerCase();
+  const lowerKey = key.toLowerCase();
   
-  // 1. Détection par la clé (le plus fiable pour le métier)
-  if (lowercaseKey.includes('date') || lowercaseKey.includes('validity') || lowercaseKey.includes('echeance')) {
-    return 'date';
+  //  Détection des dates
+  if (
+    lowerKey.includes("date") ||
+    lowerKey.includes("echeance") ||
+    lowerKey.includes("emission") ||
+    lowerKey.includes("due") ||
+    lowerKey.includes("issue") ||
+    lowerKey.includes("validity") ||
+    lowerKey.includes("delivery") ||
+    lowerKey.includes("order")
+  ) {
+    return "date";
   }
   
-  if (lowercaseKey.includes('amount') || lowercaseKey.includes('total') || lowercaseKey.includes('ht') || lowercaseKey.includes('ttc') || lowercaseKey.includes('tva')) {
-    return 'number';
+  //  Détection des nombres
+  if (
+    lowerKey.includes("amount") ||
+    lowerKey.includes("montant") ||
+    lowerKey.includes("price") ||
+    lowerKey.includes("prix") ||
+    lowerKey.includes("total") ||
+    lowerKey.includes("tva") ||
+    lowerKey.includes("vat") ||
+    lowerKey.includes("rate") ||
+    lowerKey.includes("taux") ||
+    lowerKey.includes("quantity") ||
+    lowerKey.includes("quantite") ||
+    lowerKey.includes("terms") ||
+    lowerKey.includes("duration") ||
+    typeof value === "number"
+  ) {
+    return "number";
   }
 
   // 2. Détection par la valeur (fallback)

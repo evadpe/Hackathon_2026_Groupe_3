@@ -6,26 +6,42 @@ import DocumentList from '@/components/conformite/DocumentList';
 import DocumentViewer from '@/components/conformite/DocumentViewer';
 import ValidationForm from '@/components/conformite/ValidationForm';
 import { AdminDocument } from '@/types';
-import { MOCK_DOCUMENTS } from '@/constants/mockDocuments';
+import { allMockDocuments } from '@/constants/mockDocuments';
 
 export default function ConformitePage() {
-  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [documents, setDocuments] = useState<AdminDocument[]>(allMockDocuments);
   const [selectedDoc, setSelectedDoc] = useState<AdminDocument | null>(null);
   const [showUpload, setShowUpload] = useState(true);
 
-  // Fonction pour ajouter les docs après l'upload (sera liée à l'API plus tard)
+  // --- NOUVELLE LOGIQUE : TRANSITION FLUIDE ---
+  const handleDocumentValidated = (validatedId: string) => {
+    // 1. On retire le document validé de la liste (Silver -> Gold)
+    const updatedList = documents.filter(doc => doc.id !== validatedId);
+    setDocuments(updatedList);
+
+    // 2. Sélection automatique du suivant pour la fluidité
+    if (updatedList.length > 0) {
+      setSelectedDoc(updatedList[0]);
+    } else {
+      setSelectedDoc(null);
+      setShowUpload(true); // Retour à l'upload si tout est fini
+    }
+  };
+
   const handleUploadSuccess = (newDocs: AdminDocument[]) => {
     setDocuments(prev => [...prev, ...newDocs]);
-    setShowUpload(false); // On cache l'upload pour montrer le travail
+    // Sélectionne le premier document du nouvel upload pour commencer direct
+    setSelectedDoc(newDocs[0]); 
+    setShowUpload(false);
   };
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       
       {/* 1. Sidebar de navigation des documents (Silver Zone) */}
-      <aside className="w-72 flex flex-col border-r bg-white">
+      <aside className="w-72 flex flex-col border-r bg-white shrink-0">
         <div className="p-4 border-b flex justify-between items-center bg-gray-50/50">
-          <h2 className="font-bold text-gray-700">Flux à valider</h2>
+          <h2 className="font-bold text-gray-700">Flux à valider ({documents.length})</h2>
           <button 
             onClick={() => setShowUpload(true)}
             className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
@@ -60,9 +76,9 @@ export default function ConformitePage() {
               {documents.length > 0 && (
                 <button 
                   onClick={() => setShowUpload(false)}
-                  className="w-full text-sm text-blue-600 font-medium hover:underline"
+                  className="w-full text-sm text-blue-600 font-medium hover:underline mt-4"
                 >
-                  Retour à la liste des documents en cours
+                  Retour à la liste ({documents.length} documents en attente)
                 </button>
               )}
             </div>
@@ -77,7 +93,12 @@ export default function ConformitePage() {
               />
             </div>
             <div className="w-112.5 shrink-0">
-              <ValidationForm document={selectedDoc} />
+              {/* On ajoute onSuccess ici */}
+              <ValidationForm 
+                key={selectedDoc.id} // Indispensable pour reset l'état interne du form
+                document={selectedDoc} 
+                onSuccess={() => handleDocumentValidated(selectedDoc.id)}
+              />
             </div>
           </div>
         ) : (
@@ -86,7 +107,7 @@ export default function ConformitePage() {
              <div className="p-8 bg-white rounded-full shadow-sm border">
                 <Plus size={40} className="text-gray-300" />
              </div>
-             <p className="text-lg">Aucun document sélectionné</p>
+             <p className="text-lg">Aucun document à valider</p>
              <button 
               onClick={() => setShowUpload(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
