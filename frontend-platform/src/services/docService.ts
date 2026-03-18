@@ -26,9 +26,9 @@ export const docService = {
   },
 
   // 4. Valider un doc (Transition Silver ➔ Gold)
-  // Utilisation de PUT car on met à jour l'intégralité des données extraites
+  // On utilise POST pour rester compatible avec le backend actuel et les anciennes versions.
   validateDoc: async (id: string, finalData: any): Promise<AdminDocument> => {
-    const { data } = await api.put(`/documents/${id}/validate`, {
+    const { data } = await api.post(`/documents/${id}/validate`, {
       extractedData: finalData
     });
     return data;
