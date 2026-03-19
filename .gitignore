@@ -1,0 +1,18 @@
+# OS / Editor specific
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.log
+
+# Python common
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Project Specific (Temporary/Generated)
+.claude/
+.gemini/

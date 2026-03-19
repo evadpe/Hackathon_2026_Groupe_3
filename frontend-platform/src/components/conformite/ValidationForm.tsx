@@ -2,6 +2,7 @@
 
 "use client";
 import { Save, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { AdminDocument } from "@/types";
 import { getFieldType } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -20,25 +21,38 @@ interface Props {
  */
 function formatValueForInput(value: any, inputType: string): string {
   if (value === null || value === undefined) return "";
-  
+
   // Pour les dates, convertir en format ISO (YYYY-MM-DD)
   if (inputType === "date") {
+    const str = String(value).trim();
+    // Déjà au format YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.slice(0, 10);
+    }
+    // Format DD/MM/YYYY ou DD-MM-YYYY (sortie courante des OCR)
+    const dmyMatch = str.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})/);
+    if (dmyMatch) {
+      return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    }
+    // Tentative de parsing générique
     try {
-      const date = new Date(value);
+      const date = new Date(str);
       if (!isNaN(date.getTime())) {
         return date.toISOString().split("T")[0];
       }
     } catch {
-      return "";
+      // Ignorer
     }
+    // Valeur non parsable : on l'affiche telle quelle en texte
+    return str;
   }
-  
+
   // Pour les nombres, s'assurer d'avoir une valeur numérique
   if (inputType === "number") {
     const num = Number(value);
     return isNaN(num) ? "" : num.toString();
   }
-  
+
   // Pour le texte, conversion simple en string
   return String(value);
 }
@@ -52,7 +66,7 @@ function StatusBadge({ status }: { status: AdminDocument['status'] }) {
     silver: "bg-gray-100 text-gray-700",
     gold: "bg-yellow-100 text-yellow-700"
   };
-  
+
   return (
     <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-widest ${colors[status]}`}>
       {status}
@@ -69,7 +83,7 @@ function TypeBadge({ type }: { type: AdminDocument['type'] }) {
     quote: "Devis",
     purchase_order: "Bon de commande"
   };
-  
+
   return (
     <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full uppercase tracking-widest">
       {labels[type]}
@@ -95,20 +109,20 @@ export default function ValidationForm({ document, onSuccess }: Props) {
   const handleChange = (key: string, value: string, inputType: string) => {
     setFormData((prev) => {
       let processedValue: any = value;
-      
+
       // Conversion selon le type
       if (inputType === "number") {
         processedValue = value === "" ? null : Number(value);
       } else if (inputType === "date") {
         processedValue = value; // Garder le format ISO
       }
-      
+
       return {
         ...prev,
         [key]: processedValue,
       };
     });
-  
+
   };
 
   const handleValidation = async (e: React.FormEvent) => {
@@ -117,10 +131,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     try {
       await docService.validateDoc(document.id, formData);
       if (onSuccess) onSuccess();
-      alert("✅ Document validé et envoyé en Zone Gold !");
+      toast.success("Document validé et envoyé en Zone Gold !");
     } catch (error) {
       console.error("❌ Erreur lors de la validation", error);
-      alert("❌ Erreur lors de la validation");
+      toast.error("Erreur lors de la validation");
     } finally {
       setIsSubmitting(false);
     }
@@ -133,9 +147,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     try {
       await docService.rejectDoc(document.id, reason || undefined);
       if (onSuccess) onSuccess();
+      toast.success("Document rejeté avec succès");
     } catch (error) {
       console.error("❌ Erreur lors du rejet", error);
-      alert("❌ Erreur lors du rejet");
+      toast.error("Erreur lors du rejet");
     } finally {
       setIsSubmitting(false);
     }
@@ -143,7 +158,7 @@ export default function ValidationForm({ document, onSuccess }: Props) {
 
   // Transformation de l'objet en tableau pour le mapping
   const fields = Object.entries(extractedData || {});
-  
+
   // Compteur d'anomalies par sévérité
   const errorCount = anomalies.filter(a => a.severity === "error").length;
   const warningCount = anomalies.filter(a => a.severity === "warning").length;
@@ -161,12 +176,12 @@ export default function ValidationForm({ document, onSuccess }: Props) {
             <StatusBadge status={status} />
           </div>
         </div>
-        
+
         <div className="space-y-1 text-sm text-gray-600">
           <p className="font-medium">📄 {filename}</p>
           <p className="text-xs">ID: {id}</p>
         </div>
-        
+
         {/* Indicateur d'anomalies dans le header */}
         {anomalies.length > 0 && (
           <div className="mt-3 flex gap-2 text-xs">
@@ -195,13 +210,13 @@ export default function ValidationForm({ document, onSuccess }: Props) {
         {fields.map(([key, value]) => {
           const inputType = getFieldType(key, value);
           const anomaly = anomalies?.find((a) => a.field === key);
-          
+
           // Récupération de la valeur actuelle depuis formData
           const currentValue = formData[key];
           const formattedValue = formatValueForInput(currentValue, inputType);
 
           // Style selon la sévérité de l'anomalie
-          const inputClass = anomaly 
+          const inputClass = anomaly
             ? anomaly.severity === "error"
               ? "border-red-300 bg-red-50 focus:ring-2 focus:ring-red-200"
               : "border-orange-300 bg-orange-50 focus:ring-2 focus:ring-orange-200"
@@ -213,10 +228,9 @@ export default function ValidationForm({ document, onSuccess }: Props) {
               <label className="text-sm font-semibold text-gray-700 flex justify-between items-center">
                 <span>{key.replace(/_/g, " ").toUpperCase()}</span>
                 {anomaly && (
-                  <span 
-                    className={`text-[10px] font-bold flex items-center gap-1 uppercase ${
-                      anomaly.severity === "error" ? "text-red-500" : "text-orange-500"
-                    }`}
+                  <span
+                    className={`text-[10px] font-bold flex items-center gap-1 uppercase ${anomaly.severity === "error" ? "text-red-500" : "text-orange-500"
+                      }`}
                   >
                     <AlertCircle size={12} />
                     {anomaly.severity === "error" ? "Erreur" : "Attention"}
@@ -234,14 +248,14 @@ export default function ValidationForm({ document, onSuccess }: Props) {
                   step={inputType === "number" ? "0.01" : undefined}
                   className={`w-full p-2.5 rounded-lg border text-sm transition-all outline-none ${inputClass}`}
                   placeholder={
-                    inputType === "date" 
-                      ? "YYYY-MM-DD" 
-                      : inputType === "number" 
-                      ? "0.00" 
-                      : ""
+                    inputType === "date"
+                      ? "YYYY-MM-DD"
+                      : inputType === "number"
+                        ? "0.00"
+                        : ""
                   }
                 />
-                
+
                 {/* Icône de validation (seulement si pas d'anomalie et valeur présente) */}
                 {!anomaly && currentValue !== null && currentValue !== undefined && currentValue !== "" && (
                   <CheckCircle2
@@ -253,9 +267,8 @@ export default function ValidationForm({ document, onSuccess }: Props) {
 
               {/* Message d'erreur/warning */}
               {anomaly && (
-                <p className={`text-xs font-medium ${
-                  anomaly.severity === "error" ? "text-red-600" : "text-orange-600"
-                }`}>
+                <p className={`text-xs font-medium ${anomaly.severity === "error" ? "text-red-600" : "text-orange-600"
+                  }`}>
                   {anomaly.message}
                 </p>
               )}
@@ -275,9 +288,8 @@ export default function ValidationForm({ document, onSuccess }: Props) {
             <ul className="text-xs text-red-700 space-y-2">
               {anomalies.map((a, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className={`mt-0.5 ${
-                    a.severity === "error" ? "text-red-500" : "text-orange-500"
-                  }`}>
+                  <span className={`mt-0.5 ${a.severity === "error" ? "text-red-500" : "text-orange-500"
+                    }`}>
                     {a.severity === "error" ? "🔴" : "🟠"}
                   </span>
                   <span>

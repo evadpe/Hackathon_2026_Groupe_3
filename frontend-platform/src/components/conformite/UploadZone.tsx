@@ -4,6 +4,7 @@ import { AdminDocument } from "@/types";
 import { UploadCloud, X, FileText, Send, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { toast } from "sonner";
 
 interface Props {
   onUploadComplete: (docs: AdminDocument[]) => void;
@@ -23,15 +24,24 @@ export default function UploadZone({ onUploadComplete }: Props) {
   };
 
   const handleStartOCR = async () => {
-    // Pas besoin d'argument ici
-    if (stagedFiles.length === 0) return; // Sécurité
+    if (stagedFiles.length === 0) return;
 
     setIsProcessing(true);
+    
+    const uploadPromise = docService.uploadDocs(stagedFiles);
+
+    toast.promise(uploadPromise, {
+      loading: "Analyse des documents en cours...",
+      success: (data) => {
+        onUploadComplete(data);
+        setStagedFiles([]);
+        return `${data.length} document(s) analysé(s) avec succès !`;
+      },
+      error: "Erreur lors de l'analyse des documents.",
+    });
+
     try {
-      // On utilise directement le state 'stagedFiles'
-      const uploadedDocs = await docService.uploadDocs(stagedFiles);
-      onUploadComplete(uploadedDocs);
-      setStagedFiles([]); // On vide la liste locale après succès
+      await uploadPromise;
     } catch (error) {
       console.error("Erreur lors de l'upload réel", error);
     } finally {

@@ -3,14 +3,16 @@ import { LayoutDashboard, ShieldCheck, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { Toaster } from 'sonner';
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={cn("font-sans", geist.variable)}>
       <body className="flex h-screen bg-gray-50 text-gray-900">
+        <Toaster richColors closeButton position="top-right" />
         {/* Sidebar */}
         <aside className="w-64 bg-white border-r flex flex-col">
           <div className="p-6 font-bold text-xl text-blue-600 flex items-center gap-2">

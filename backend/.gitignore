@@ -1,0 +1,27 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# User Data / Uploads (Avoid pushing customer PDFs)
+uploads/
+test_documents/
+
+# Generated OCR Reports / Results
+resultats_json/
+rapports_ocr/
+
+# Secrets & Environment
+.env
+.env.local
+
+# OS / Editor specific
+.DS_Store
+.vscode/
+.idea/
+.pytest_cache/

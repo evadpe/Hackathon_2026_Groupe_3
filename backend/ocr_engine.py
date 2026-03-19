@@ -14,9 +14,16 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
+<<<<<<< Updated upstream
 # Chemin Poppler (Windows) : définir via variable d'environnement
 # Exemple : set POPPLER_PATH=C:\poppler\Library\bin
 POPPLER_PATH = os.getenv("POPPLER_PATH")  # None sur Linux/Docker (Poppler dans le PATH système)
+=======
+# Chemin Poppler : sur Linux/Mac, Poppler est dans le PATH système (rien à faire).
+# Sur Windows, définir la variable d'env POPPLER_PATH.
+# Exemple Windows : set POPPLER_PATH=C:\poppler\Library\bin
+POPPLER_PATH = os.getenv("POPPLER_PATH") or None
+>>>>>>> Stashed changes
 
 
 def pdf_to_ocr_dict(pdf_path: str) -> dict | None:

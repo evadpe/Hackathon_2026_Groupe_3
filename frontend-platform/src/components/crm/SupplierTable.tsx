@@ -1,6 +1,6 @@
 "use client";
 import { AdminDocument } from '@/types';
-import {  ExternalLink, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import { ExternalLink, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 
 interface Props {
   documents: AdminDocument[];
@@ -28,7 +28,7 @@ export default function SupplierTable({ documents }: Props) {
                   <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                     <FileText size={18} />
                   </div>
-                  <span className="font-medium text-gray-900">{doc.extractedData.companyName || "Inconnu"}</span>
+                  <span className="font-medium text-gray-900">{doc.extractedData?.fournisseur || "Inconnu"}</span>
                 </div>
               </td>
               <td className="px-6 py-4">
@@ -36,11 +36,11 @@ export default function SupplierTable({ documents }: Props) {
               </td>
               <td className="px-6 py-4">
                 <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700">
-                  {doc.extractedData.siren}
+                  {doc.extractedData?.siret}
                 </code>
               </td>
               <td className="px-6 py-4 font-semibold text-gray-900">
-                {doc.extractedData.amountTTC?.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                {doc.extractedData?.total_ttc?.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
               </td>
               <td className="px-6 py-4">
                 <StatusBadge status={doc.status} />

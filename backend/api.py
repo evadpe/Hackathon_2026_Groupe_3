@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -261,14 +261,19 @@ async def get_pending_documents():
     return [doc for doc in documents_db.values() if doc["status"] == "silver"]
 
 
-@app.post("/documents/{doc_id}/validate")
-async def validate_document(doc_id: str, corrected_data: dict):
+@app.api_route("/documents/{doc_id}/validate", methods=["POST", "PUT"])
+async def validate_document(doc_id: str, body: dict = Body(...)):
     """
     Valide un document avec les données corrigées par l'opérateur.
     Passe le document en zone Gold.
+    Accepte POST et PUT (le frontend utilise PUT).
+    Le body peut être { "extractedData": {...} } ou directement le dict de données.
     """
     if doc_id not in documents_db:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' introuvable.")
+
+    # Le frontend envoie { extractedData: {...} }, on extrait les données corrigées
+    corrected_data = body.get("extractedData", body)
 
     doc = documents_db[doc_id]
     doc["status"]        = "gold"

@@ -14,6 +14,7 @@ export const getFieldType = (key: string, value: any): 'date' | 'number' | 'text
   if (
     lowerKey.includes("date") ||
     lowerKey.includes("echeance") ||
+    lowerKey.includes("validite") ||
     lowerKey.includes("emission") ||
     lowerKey.includes("due") ||
     lowerKey.includes("issue") ||
@@ -25,16 +26,16 @@ export const getFieldType = (key: string, value: any): 'date' | 'number' | 'text
   }
   
   //  Détection des nombres
+  // Note: "taux" et "tva_taux" sont exclus car ils contiennent le symbole % (ex: "20%")
   if (
     lowerKey.includes("amount") ||
     lowerKey.includes("montant") ||
     lowerKey.includes("price") ||
     lowerKey.includes("prix") ||
-    lowerKey.includes("total") ||
-    lowerKey.includes("tva") ||
+    (lowerKey.includes("total") && !lowerKey.includes("taux")) ||
+    (lowerKey.includes("tva") && !lowerKey.includes("taux")) ||
     lowerKey.includes("vat") ||
     lowerKey.includes("rate") ||
-    lowerKey.includes("taux") ||
     lowerKey.includes("quantity") ||
     lowerKey.includes("quantite") ||
     lowerKey.includes("terms") ||
