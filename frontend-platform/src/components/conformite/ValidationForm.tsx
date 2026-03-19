@@ -131,10 +131,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
     try {
       await docService.validateDoc(document.id, formData);
       if (onSuccess) onSuccess();
-      toast.success("Document validé et envoyé en Zone Gold !");
+      alert("Document validé et envoyé en Zone Gold !");
     } catch (error) {
-      console.error("❌ Erreur lors de la validation", error);
-      toast.error("Erreur lors de la validation");
+      console.error("Erreur lors de la validation", error);
+      alert("Erreur lors de la validation");
     } finally {
       setIsSubmitting(false);
     }
@@ -149,8 +149,8 @@ export default function ValidationForm({ document, onSuccess }: Props) {
       if (onSuccess) onSuccess();
       toast.success("Document rejeté avec succès");
     } catch (error) {
-      console.error("❌ Erreur lors du rejet", error);
-      toast.error("Erreur lors du rejet");
+      console.error("Erreur lors du rejet", error);
+      alert("Erreur lors du rejet");
     } finally {
       setIsSubmitting(false);
     }
@@ -178,7 +178,7 @@ export default function ValidationForm({ document, onSuccess }: Props) {
         </div>
 
         <div className="space-y-1 text-sm text-gray-600">
-          <p className="font-medium">📄 {filename}</p>
+          <p className="font-medium">{filename}</p>
           <p className="text-xs">ID: {id}</p>
         </div>
 
@@ -288,9 +288,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
             <ul className="text-xs text-red-700 space-y-2">
               {anomalies.map((a, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className={`mt-0.5 ${a.severity === "error" ? "text-red-500" : "text-orange-500"
-                    }`}>
-                    {a.severity === "error" ? "🔴" : "🟠"}
+                  <span className={`mt-0.5 ${
+                    a.severity === "error" ? "text-red-500" : "text-orange-500"
+                  }`}>
+                    {a.severity === "error" ? "•" : "-"}
                   </span>
                   <span>
                     <strong className="font-semibold">{a.field}:</strong> {a.message}

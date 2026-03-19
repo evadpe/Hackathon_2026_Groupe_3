@@ -1,35 +1,73 @@
 """
-API FastAPI — Pont entre le backend de vérification et le frontend Next.js.
-
-Endpoints attendus par le frontend (src/services/docService.ts) :
-  POST /documents/upload          → Upload + vérification → AdminDocument[]
-  GET  /documents/pending         → Liste des docs en zone Silver
-  POST /documents/{id}/validate   → Valider et passer en zone Gold
-  GET  /documents/gold            → Liste des docs validés (zone Gold)
-
-Lancer avec :
-  uvicorn api:app --reload --port 8000
+Point d'entree principal de l'API.
+Fait le lien entre le frontend Next.js, le moteur OCR, le verificateur de documents,
+la base de donnees SQLite et le stockage MinIO.
 """
 
 import json
+import os
+import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+import httpx
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
+from database import init_db, upsert_document, get_by_status, get_by_id, update_status, update_anomalies
 from models import BonCommande, Devis, Facture
-from run_ocr_test import adapter_ocr
-from verifier import VerificateurDocuments
 from ocr_engine import pdf_to_ocr_dict
+from run_ocr_test import adapter_ocr
+from storage import init_storage, upload_file, upload_json, public_url
+from verifier import VerificateurDocuments
 
-# Initialisation de l'application FastAPI et configuration du CORS pour le frontend local
+# URL du webhook n8n qui declenche le workflow apres chaque upload
+N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook/document-uploaded")
 
-app = FastAPI(title="StepAhead Industries — API Conformité", version="1.0.0")
+# Correspondance entre les types OCR et les types internes
+OCR_TYPE_MAP = {
+    "Facture":         "facture",
+    "Bon de Commande": "bon_commande",
+    "Devis":           "devis",
+}
 
+# Correspondance entre les types internes et les types attendus par le frontend
+TYPE_TO_FRONTEND = {
+    "facture":      "invoice",
+    "bon_commande": "purchase_order",
+    "devis":        "quote",
+}
+
+# Correspondance entre les niveaux d'alerte Python et les severites JSON
+NIVEAU_TO_SEVERITY = {
+    "ERREUR":        "error",
+    "AVERTISSEMENT": "warning",
+    "INFO":          "warning",
+}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Au demarrage : on cree la table SQLite et les buckets MinIO si necessaire
+    init_db()
+    try:
+        init_storage()
+        print("[Storage] Buckets MinIO prets (bronze / silver / gold)")
+    except Exception as e:
+        print(f"[Storage] MinIO non disponible : {e}")
+    yield
+
+
+app = FastAPI(
+    title="StepAhead Industries - API Conformite",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+# On autorise les requetes depuis le frontend local
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
@@ -38,48 +76,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dossier local où sont stockés les fichiers uploadés, servi comme route statique /files
-
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-app.mount("/files", StaticFiles(directory=str(UPLOAD_DIR)), name="files")
-
-# Base de données en mémoire : les documents disparaissent si le serveur redémarre.
-# En production, remplacer par SQLite ou PostgreSQL.
-
-documents_db: Dict[str, dict] = {}
-
-# Correspondances entre les noms OCR, les types internes et les types attendus par le frontend
-
-OCR_TYPE_MAP = {
-    "Facture":         "facture",
-    "Bon de Commande": "bon_commande",
-    "Devis":           "devis",
-}
-
-TYPE_TO_FRONTEND = {
-    "facture":      "invoice",
-    "bon_commande": "purchase_order",
-    "devis":        "quote",
-}
-
-NIVEAU_TO_SEVERITY = {
-    "ERREUR":        "error",
-    "AVERTISSEMENT": "warning",
-    "INFO":          "warning",
-}
-
-
-# Fonctions utilitaires internes pour transformer les données OCR en format frontend
 
 def _detecter_type(raw: dict) -> str:
-    """Retourne le type interne ('facture', 'bon_commande', 'devis') depuis un dict OCR."""
+    """Lit le champ metadata.type du JSON OCR et retourne le type interne correspondant."""
     type_ocr = raw.get("metadata", {}).get("type", "")
     return OCR_TYPE_MAP.get(type_ocr, "inconnu")
 
 
 def _ocr_to_extracted_data(raw: dict, type_frontend: str) -> dict:
-    """Aplatit le JSON OCR en extractedData lisible par le frontend."""
+    """Transforme le JSON brut de l'OCR en un objet plat lisible par le frontend."""
     doc_info   = raw.get("doc_info", {})
     vendor     = raw.get("vendor", {})
     financials = raw.get("financials", {})
@@ -95,6 +100,7 @@ def _ocr_to_extracted_data(raw: dict, type_frontend: str) -> dict:
         "total_ttc":   financials.get("total_ttc", 0.0),
     }
 
+    # Champs supplementaires selon le type de document
     if type_frontend == "invoice":
         data["echeance"] = doc_info.get("due_date", "")
     elif type_frontend == "quote":
@@ -103,52 +109,67 @@ def _ocr_to_extracted_data(raw: dict, type_frontend: str) -> dict:
     return data
 
 
-def _make_admin_doc(
-    doc_id: str,
-    filename: str,
-    type_frontend: str,
-    extracted_data: dict,
-    anomalies: list,
-    file_url: str,
-) -> dict:
+def _make_admin_doc(doc_id, filename, type_frontend, extracted_data, anomalies, file_url) -> dict:
+    """Construit le dictionnaire standard AdminDocument attendu par le frontend."""
     return {
-        "id":           doc_id,
-        "filename":     filename,
-        "fileUrl":      file_url,
-        "type":         type_frontend,
-        "status":       "silver",
-        "uploadDate":   datetime.now().isoformat(),
+        "id":            doc_id,
+        "filename":      filename,
+        "fileUrl":       file_url,
+        "type":          type_frontend,
+        "status":        "silver",
+        "uploadDate":    datetime.now().isoformat(),
         "extractedData": extracted_data,
-        "anomalies":    anomalies,
+        "anomalies":     anomalies,
     }
 
 
+async def _notifier_n8n(docs: list):
+    """Previent n8n qu'un upload vient de se terminer pour declencher le workflow."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(N8N_WEBHOOK_URL, json={"documents": docs})
+    except Exception as e:
+        print(f"[n8n] Webhook non joignable : {e}")
+
+
 @app.post("/documents/upload")
-async def upload_documents(files: List[UploadFile] = File(...)):
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    background_tasks: BackgroundTasks = None,
+):
     """
-    Reçoit N fichiers JSON (output OCR) ou PDF.
-    - JSON : traitement immédiat via adapter_ocr + vérification inter-documents.
-    - PDF  : stockage + stub (intégration OCR à brancher ici).
-    Retourne la liste des AdminDocument créés.
+    Recoit un ou plusieurs fichiers PDF ou JSON depuis le frontend.
+
+    Pour chaque fichier :
+      - On le stocke dans le bucket bronze (fichier brut)
+      - Si c'est un PDF, on lance l'OCR pour en extraire les donnees
+      - Si c'est un JSON OCR deja traite, on l'utilise directement
+
+    Si on recoit a la fois un bon de commande et une facture, on lance
+    la verification inter-documents pour detecter les anomalies.
+
+    A la fin, on notifie n8n pour qu'il traite les nouveaux documents.
     """
-    session_id = uuid.uuid4().hex[:8]
-    docs_by_type: Dict[str, dict] = {}       # type_interne → raw OCR dict
-    saved_filenames: Dict[str, str] = {}     # type_interne → nom de fichier sauvegardé
-    created_docs: List[dict] = []
+    session_id    = uuid.uuid4().hex[:8]
+    docs_by_type: Dict[str, dict] = {}
+    file_urls:    Dict[str, str]  = {}
+    created_docs: List[dict]      = []
 
     for upload in files:
         suffix   = Path(upload.filename or "file").suffix.lower()
         file_key = f"{session_id}_{uuid.uuid4().hex[:6]}{suffix}"
-        dest     = UPLOAD_DIR / file_key
         content  = await upload.read()
 
-        with open(dest, "wb") as f:
-            f.write(content)
+        # On envoie le fichier brut dans le bucket bronze du data lake
+        try:
+            content_type = "application/pdf" if suffix == ".pdf" else "application/json"
+            file_url = upload_file("bronze", file_key, content, content_type)
+        except Exception:
+            # Si MinIO est indisponible, on garde une URL locale de secours
+            file_url = f"/files/{file_key}"
 
-        file_url = f"/files/{file_key}"
-
-        # Fichier JSON : résultat OCR déjà traité, on le parse directement
         if suffix == ".json":
+            # Fichier JSON : c'est deja un resultat OCR, on le parse directement
             try:
                 raw_ocr = json.loads(content)
             except json.JSONDecodeError:
@@ -158,137 +179,153 @@ async def upload_documents(files: List[UploadFile] = File(...)):
             if type_interne == "inconnu":
                 continue
 
-            docs_by_type[type_interne]    = raw_ocr
-            saved_filenames[type_interne] = file_url
+            docs_by_type[type_interne] = raw_ocr
+            file_urls[type_interne]    = file_url
 
-        # Fichier PDF : on lance l'OCR pour en extraire les données
         elif suffix == ".pdf":
-            raw_ocr = pdf_to_ocr_dict(str(dest))
+            # Fichier PDF : on doit passer par l'OCR pour extraire le texte.
+            # EasyOCR a besoin d'un vrai fichier sur le disque, donc on passe
+            # par un fichier temporaire qu'on supprime apres.
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+
+            try:
+                raw_ocr = pdf_to_ocr_dict(tmp_path)
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
 
             if raw_ocr is not None:
                 type_interne = _detecter_type(raw_ocr)
                 if type_interne != "inconnu":
-                    # OCR réussi + type reconnu → traitement dans la boucle JSON
-                    docs_by_type[type_interne]    = raw_ocr
-                    saved_filenames[type_interne] = file_url
+                    docs_by_type[type_interne] = raw_ocr
+                    file_urls[type_interne]    = file_url
                 else:
-                    # Type non reconnu → on affiche quand même les données extraites
-                    doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
+                    # L'OCR a fonctionne mais le type de document n'est pas reconnu
+                    doc_id    = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
                     admin_doc = _make_admin_doc(
-                        doc_id        = doc_id,
-                        filename      = upload.filename or file_key,
-                        type_frontend = "invoice",
-                        extracted_data = _ocr_to_extracted_data(raw_ocr, "invoice"),
-                        anomalies     = [{"field": "type", "message": "Type de document non reconnu (Facture / Bon de Commande / Devis attendu).", "severity": "warning"}],
-                        file_url      = file_url,
+                        doc_id, upload.filename or file_key, "invoice",
+                        _ocr_to_extracted_data(raw_ocr, "invoice"),
+                        [{"field": "type", "message": "Type non reconnu.", "severity": "warning"}],
+                        file_url,
                     )
-                    documents_db[doc_id] = admin_doc
+                    upsert_document(admin_doc)
                     created_docs.append(admin_doc)
             else:
-                # OCR échoué → stub avec erreur explicite
-                doc_id = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
+                # L'OCR a completement echoue (image trop floue, format non supporte...)
+                doc_id    = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
                 admin_doc = _make_admin_doc(
-                    doc_id        = doc_id,
-                    filename      = upload.filename or file_key,
-                    type_frontend = "invoice",
-                    extracted_data = {"note": "Extraction OCR échouée", "fichier": upload.filename},
-                    anomalies     = [{"field": "ocr", "message": "L'OCR n'a pas pu extraire les données du PDF.", "severity": "error"}],
-                    file_url      = file_url,
+                    doc_id, upload.filename or file_key, "invoice",
+                    {"note": "Extraction OCR echouee", "fichier": upload.filename},
+                    [{"field": "ocr", "message": "L'OCR n'a pas pu extraire les donnees du PDF.", "severity": "error"}],
+                    file_url,
                 )
-                documents_db[doc_id] = admin_doc
+                upsert_document(admin_doc)
                 created_docs.append(admin_doc)
 
-    # Pour chaque type de document reconnu, on crée un AdminDocument et on le persiste en mémoire
+    # Pour chaque type de document reconnu, on cree un AdminDocument et on le persiste
     for type_interne, raw_ocr in docs_by_type.items():
-        type_frontend = TYPE_TO_FRONTEND[type_interne]
-        doc_id        = f"{type_interne.upper()}-{session_id}"
-        filename      = saved_filenames.get(type_interne, f"{type_interne}.json")
+        type_frontend  = TYPE_TO_FRONTEND[type_interne]
+        doc_id         = f"{type_interne.upper()}-{session_id}"
+        extracted_data = _ocr_to_extracted_data(raw_ocr, type_frontend)
 
         admin_doc = _make_admin_doc(
-            doc_id        = doc_id,
-            filename      = Path(filename).name,
-            type_frontend = type_frontend,
-            extracted_data = _ocr_to_extracted_data(raw_ocr, type_frontend),
-            anomalies     = [],
-            file_url      = filename,
+            doc_id, f"{type_interne}.json", type_frontend,
+            extracted_data, [], file_urls.get(type_interne, ""),
         )
-        documents_db[doc_id] = admin_doc
+
+        # On archive aussi le JSON extrait dans le bucket silver
+        try:
+            upload_json("silver", f"{doc_id}.json", extracted_data)
+        except Exception:
+            pass
+
+        upsert_document(admin_doc)
         created_docs.append(admin_doc)
 
-    # Si on a un BC et une facture, on vérifie leur cohérence et on attache les anomalies
+    # Si on a un bon de commande ET une facture, on verifie leur coherence
     if "bon_commande" in docs_by_type and "facture" in docs_by_type:
         try:
-            bon_commande = BonCommande.model_validate(
-                adapter_ocr(docs_by_type["bon_commande"])
-            )
-            facture = Facture.model_validate(
-                adapter_ocr(docs_by_type["facture"])
-            )
-            devis = None
+            bon_commande = BonCommande.model_validate(adapter_ocr(docs_by_type["bon_commande"]))
+            facture      = Facture.model_validate(adapter_ocr(docs_by_type["facture"]))
+            devis        = None
             if "devis" in docs_by_type:
                 devis = Devis.model_validate(adapter_ocr(docs_by_type["devis"]))
 
             rapport = VerificateurDocuments().verifier(bon_commande, facture, devis)
 
-            # Attacher les anomalies à la facture (doc_id = "FACTURE-<session_id>")
             fac_doc_id = f"FACTURE-{session_id}"
-
-            anomalies = [
+            anomalies  = [
                 {
-                    "field":    alerte.reference_ligne or alerte.categorie,
-                    "message":  alerte.message,
-                    "severity": NIVEAU_TO_SEVERITY.get(alerte.niveau.value, "warning"),
+                    "field":    a.reference_ligne or a.categorie,
+                    "message":  a.message,
+                    "severity": NIVEAU_TO_SEVERITY.get(a.niveau.value, "warning"),
                 }
-                for alerte in rapport.alertes
+                for a in rapport.alertes
             ]
 
-            if fac_doc_id in documents_db:
-                documents_db[fac_doc_id]["anomalies"] = anomalies
-                for doc in created_docs:
-                    if doc["id"] == fac_doc_id:
-                        doc["anomalies"] = anomalies
-                        break
+            # On attache les anomalies detectees a la facture
+            update_anomalies(fac_doc_id, anomalies)
+            for doc in created_docs:
+                if doc["id"] == fac_doc_id:
+                    doc["anomalies"] = anomalies
+                    break
 
         except Exception as exc:
-            print(f"[Vérification] Erreur : {exc}")
+            print(f"[Verification] Erreur : {exc}")
+
+    # On previent n8n en arriere-plan pour ne pas bloquer la reponse au frontend
+    if created_docs and background_tasks:
+        background_tasks.add_task(_notifier_n8n, created_docs)
 
     return created_docs
 
 
 @app.get("/documents/pending")
 async def get_pending_documents():
-    """Retourne tous les documents en zone Silver (en attente de validation)."""
-    return [doc for doc in documents_db.values() if doc["status"] == "silver"]
+    """Retourne les documents en zone Silver, c'est-a-dire en attente de validation par un operateur."""
+    return get_by_status("silver")
 
 
-@app.api_route("/documents/{doc_id}/validate", methods=["POST", "PUT"])
-async def validate_document(doc_id: str, body: dict = Body(...)):
+@app.put("/documents/{doc_id}/validate")
+async def validate_document(doc_id: str, corrected_data: dict):
     """
-    Valide un document avec les données corrigées par l'opérateur.
-    Passe le document en zone Gold.
-    Accepte POST et PUT (le frontend utilise PUT).
-    Le body peut être { "extractedData": {...} } ou directement le dict de données.
+    L'operateur a verifie et corrige les donnees du document.
+    On le passe en zone Gold et on archive le JSON final dans MinIO.
     """
-    if doc_id not in documents_db:
+    doc = get_by_id(doc_id)
+    if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' introuvable.")
 
-    # Le frontend envoie { extractedData: {...} }, on extrait les données corrigées
-    corrected_data = body.get("extractedData", body)
+    extracted = corrected_data.get("extractedData", corrected_data)
+    update_status(doc_id, "gold", extracted_data=extracted, anomalies=[])
 
-    doc = documents_db[doc_id]
-    doc["status"]        = "gold"
-    doc["extractedData"] = corrected_data
-    doc["anomalies"]     = []
+    # On archive les donnees validees dans le bucket gold du data lake
+    try:
+        upload_json("gold", f"{doc_id}.json", extracted)
+    except Exception:
+        pass
 
-    return {"message": "Document validé et passé en zone Gold.", "id": doc_id}
+    return {"message": "Document valide et passe en zone Gold.", "id": doc_id}
+
+
+@app.patch("/documents/{doc_id}/reject")
+async def reject_document(doc_id: str, body: dict = {}):
+    """L'operateur a rejete le document. On le marque comme rejete avec la raison eventuellement fournie."""
+    doc = get_by_id(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' introuvable.")
+
+    update_status(doc_id, "rejected")
+    return {"message": "Document rejete.", "id": doc_id, "reason": body.get("reason")}
 
 
 @app.get("/documents/gold")
 async def get_gold_documents():
-    """Retourne tous les documents validés (zone Gold)."""
-    return [doc for doc in documents_db.values() if doc["status"] == "gold"]
+    """Retourne les documents valides en zone Gold, visibles dans l'espace metier."""
+    return get_by_status("gold")
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "2.0.0"}

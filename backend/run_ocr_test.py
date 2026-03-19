@@ -21,7 +21,7 @@ from verifier import VerificateurDocuments
 from report import afficher_rapport, exporter_rapport_json
 
 
-# Correspondance entre le type retourné par l'OCR et le type interne
+# Correspondance entre le type retourné par l'OCR et le type interne utilisé dans le code
 TYPE_MAP = {
     "Facture":        "facture",
     "Bon de Commande": "bon_commande",

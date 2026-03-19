@@ -20,11 +20,15 @@ ocr_reader = easyocr.Reader(['fr'])
 
 
 # Pourquoi cette approche ?
-# Les documents ont deux colonnes (gauche=fournisseur, droite=client) mais les labels
-# sont à la même hauteur Y. Trier par Y seul ne fonctionne pas : EasyOCR peut retourner
-# "Client" avant "Fournisseur" et inverser les blocs.
-# Solution : séparer les tokens par position X, reconstruire des lignes par colonne,
-# puis chercher les ancres dans leur colonne respective.
+#
+# Les documents ont deux colonnes visuelles (gauche=fournisseur, droite=client)
+# mais les labels "Fournisseur" et "Client" sont à la même hauteur Y.
+# Trier uniquement par Y ne fonctionne pas : EasyOCR peut retourner "Client"
+# avant "Fournisseur" et les blocs s'inversent.
+#
+# Solution : séparer les tokens en deux colonnes selon leur position X,
+# reconstruire des lignes dans chaque colonne, puis chercher les ancres
+# dans leur colonne respective.
 
 # Seuil horizontal séparant les deux colonnes (en ratio de la largeur)
 COL_SPLIT = 0.45
@@ -121,7 +125,7 @@ def _extract_section_from_col(col_lines, anchor_re):
     return section
 
 
-# Extraction du bloc fournisseur
+# Extraction du bloc fournisseur depuis les lignes de la colonne appropriée
 
 _VENDOR_ANCHOR = re.compile(r'^(Fournisseur|Vendeur|Emetteur|[EÉ]metteur)$', re.I)
 
@@ -195,7 +199,7 @@ def parse_vendor(col_lines):
     return vendor
 
 
-# Extraction du bloc client
+# Extraction du bloc client depuis les lignes de la colonne appropriée
 
 _CUSTOMER_ANCHOR = re.compile(r'^(Client|Destinataire)$', re.I)
 # Dans le layout bc_inv, le "client" au sens métier est l'Acheteur/Émetteur (gauche)
@@ -455,7 +459,7 @@ def main():
         rel_path = os.path.relpath(file_path, INPUT_FOLDER)
         print(f"Traitement : {rel_path}")
 
-        # Conversion PDF en image temporaire avant OCR
+        # Conversion PDF en image temporaire avant d'envoyer à l'OCR
         if file_path.lower().endswith('.pdf'):
             try:
                 pages = convert_from_path(file_path, poppler_path=POPPLER_PATH)
@@ -472,12 +476,12 @@ def main():
             result = process_document_extraction(file_path)
 
         if not result:
-            print(f"  ECHEC : extraction échouée (image illisible ?)\n")
+            print(f"  ECHEC : Extraction échouée (image illisible ?)\n")
             err_count += 1
             continue
 
-        # Calcul du chemin de sortie en miroir de l'entrée
-        # ex: test_documents/client 2/invoice.pdf -> resultats_json/client 2/invoice.pdf.json
+        # Calcul du chemin de sortie en miroir de l'entrée.
+        # Ex: test_documents/client 2/invoice.pdf -> resultats_json/client 2/invoice.pdf.json
         rel_dir     = os.path.dirname(rel_path)          # "document client 2"
         output_dir  = os.path.join(OUTPUT_FOLDER, rel_dir)
         os.makedirs(output_dir, exist_ok=True)

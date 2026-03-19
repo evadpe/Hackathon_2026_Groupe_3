@@ -1,22 +1,86 @@
 services:
+
+  # --- Data Lake -----------------------------------------------------------
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Console web MinIO
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+  # Cree les 3 buckets bronze/silver/gold au premier demarrage
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+        sleep 5;
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/bronze;
+        mc mb --ignore-existing local/silver;
+        mc mb --ignore-existing local/gold;
+        mc anonymous set public local/bronze;
+        mc anonymous set public local/silver;
+        mc anonymous set public local/gold;
+        echo 'Buckets bronze / silver / gold prets.';
+      "
+
+  # --- Backend -------------------------------------------------------------
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_URL: http://localhost:9000
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/document-uploaded
     volumes:
-      # Les fichiers uploadés persistent entre les redémarrages
-      - ./backend/uploads:/app/backend/uploads
+      # Persiste la base SQLite entre les redemarrages
+      - sqlite_data:/app/backend/data
+    depends_on:
+      - minio
+
+  # --- Frontend ------------------------------------------------------------
 
   frontend:
     build:
       context: .
       dockerfile: frontend-platform/Dockerfile
       args:
-        # URL de l'API vue depuis le navigateur (localhost car les ports sont exposés)
         NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
       - backend
+
+  # --- Orchestration -------------------------------------------------------
+
+  n8n:
+    image: n8nio/n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - backend
+
+volumes:
+  minio_data:
+  sqlite_data:
+  n8n_data:

@@ -45,7 +45,7 @@ def nettoyer_lignes(lignes: list[dict]) -> list[dict]:
 def main():
     args = sys.argv[1:]
 
-    # Résolution des fichiers depuis les arguments de la ligne de commande
+    # Résolution des fichiers à partir des arguments de la ligne de commande
     export_fichier = None
     fichiers = []
     i = 0
