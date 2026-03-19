@@ -37,18 +37,18 @@ export default function ConformitePage() {
   const handleUploadSuccess = (newDocs: AdminDocument[]) => {
     setDocuments(prev => [...prev, ...newDocs]);
     // Sélectionne le premier document du nouvel upload pour commencer direct
-    setSelectedDoc(newDocs[0]); 
+    setSelectedDoc(newDocs[0]);
     setShowUpload(false);
   };
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      
+
       {/* 1. Sidebar de navigation des documents (Silver Zone) */}
       <aside className="w-72 flex flex-col border-r bg-white shrink-0">
         <div className="p-4 border-b flex justify-between items-center bg-gray-50/50">
           <h2 className="font-bold text-gray-700">Flux à valider ({documents.length})</h2>
-          <button 
+          <button
             onClick={() => setShowUpload(true)}
             className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
             title="Ajouter des documents"
@@ -56,20 +56,20 @@ export default function ConformitePage() {
             <Plus size={20} />
           </button>
         </div>
-        
-        <DocumentList 
-          documents={documents} 
-          selectedId={selectedDoc?.id} 
+
+        <DocumentList
+          documents={documents}
+          selectedId={selectedDoc?.id}
           onSelect={(doc) => {
             setSelectedDoc(doc);
             setShowUpload(false);
-          }} 
+          }}
         />
       </aside>
 
       {/* 2. Zone de travail principale */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        
+
         {showUpload ? (
           /* ÉTAT : UPLOAD */
           <div className="flex-1 flex items-center justify-center p-12 bg-gray-100">
@@ -80,7 +80,7 @@ export default function ConformitePage() {
               </div>
               <UploadZone onUploadComplete={handleUploadSuccess} />
               {documents.length > 0 && (
-                <button 
+                <button
                   onClick={() => setShowUpload(false)}
                   className="w-full text-sm text-blue-600 font-medium hover:underline mt-4"
                 >
@@ -93,16 +93,16 @@ export default function ConformitePage() {
           /* ÉTAT : SPLIT-SCREEN (VIEWER + FORM) */
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1">
-              <DocumentViewer 
-                fileUrl={selectedDoc.fileUrl} 
-                filename={selectedDoc.filename} 
+              <DocumentViewer
+                fileUrl={selectedDoc.fileUrl}
+                filename={selectedDoc.filename}
               />
             </div>
             <div className="w-112.5 shrink-0">
               {/* On ajoute onSuccess ici */}
-              <ValidationForm 
+              <ValidationForm
                 key={selectedDoc.id} // Indispensable pour reset l'état interne du form
-                document={selectedDoc} 
+                document={selectedDoc}
                 onSuccess={() => handleDocumentValidated(selectedDoc.id)}
               />
             </div>
@@ -110,16 +110,16 @@ export default function ConformitePage() {
         ) : (
           /* ÉTAT : VIDE */
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-4">
-             <div className="p-8 bg-white rounded-full shadow-sm border">
-                <Plus size={40} className="text-gray-300" />
-             </div>
-             <p className="text-lg">Aucun document à valider</p>
-             <button 
+            <div className="p-8 bg-white rounded-full shadow-sm border">
+              <Plus size={40} className="text-gray-300" />
+            </div>
+            <p className="text-lg">Aucun document à valider</p>
+            <button
               onClick={() => setShowUpload(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
-             >
-               Importer des fichiers
-             </button>
+            >
+              Importer des fichiers
+            </button>
           </div>
         )}
       </main>

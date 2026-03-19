@@ -1,0 +1,27 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+backend/venv/
+.venv/
+env/
+
+# Node dependencies (even if in subfolders)
+node_modules/
+.next/
+
+# Data / Temporary files
+backend/uploads/
+resultats_json/
+rapports_ocr/
+test_documents/
+
+# Logs
+*.log
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml

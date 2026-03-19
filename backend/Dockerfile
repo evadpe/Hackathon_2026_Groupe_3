@@ -17,11 +17,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # (évite une attente de ~500 Mo au premier démarrage)
 RUN python -c "import easyocr; easyocr.Reader(['fr'])"
 
-# Copie le backend et extraction.py (utilisé par ocr_engine via sys.path)
+# Copie le projet en gardant la structure (backend/ dossier à la racine de l'image)
 COPY backend/ ./backend/
 COPY extraction.py .
 
+# On se place dans backend pour que les imports ("from models import ...") fonctionnent
 WORKDIR /app/backend
+
+# On ajoute /app au PYTHONPATH pour que 'import extraction' (à la racine) fonctionne
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
