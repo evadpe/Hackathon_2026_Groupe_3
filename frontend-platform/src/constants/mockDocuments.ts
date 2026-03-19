@@ -5,7 +5,7 @@
 
 import { AdminDocument } from "@/types";
 
-// ✅ Facture Amazon AWS avec anomalies
+// Facture Amazon AWS avec anomalies
 export const mockFactureAmazon: AdminDocument = {
   id: "doc_amazon_001",
   filename: "facture_amazon_aws.pdf",
@@ -14,7 +14,7 @@ export const mockFactureAmazon: AdminDocument = {
   status: "silver", // Zone Silver = données extraites par OCR
   uploadDate: "2024-03-15T10:30:00.000Z",
   extractedData: {
-    // 📝 Champs texte
+    // Champs texte
     supplier: "Amazon Web Services EMEA SARL",
     invoice_number: "INV-2024-03-001",
     siren: "443966172",
@@ -22,17 +22,17 @@ export const mockFactureAmazon: AdminDocument = {
     address: "38 Avenue John F. Kennedy, L-1855 Luxembourg",
     email: "aws-emea-billing@amazon.com",
     
-    // 📅 Champs date (format ISO string)
+    // Champs date (format ISO string)
     issue_date: "2024-03-01",
     due_date: "2024-03-31",
     
-    // 💰 Champs numériques
+    // Champs numeriques
     amount_ht: 850.00,
     vat: 170.00,
     amount_ttc: 1020.00,
     vat_rate: 20,
     
-    // ℹ️ Informations additionnelles
+    // Informations additionnelles
     customer_reference: "CLIENT-2024-001",
     payment_method: "Bank Transfer",
     payment_terms: 30
@@ -51,7 +51,7 @@ export const mockFactureAmazon: AdminDocument = {
   ]
 };
 
-// ✅ Facture OVH propre (sans anomalies)
+// Facture OVH propre (sans anomalies)
 export const mockFactureOVH: AdminDocument = {
   id: "doc_ovh_002",
   filename: "facture_ovh.pdf",
@@ -82,7 +82,7 @@ export const mockFactureOVH: AdminDocument = {
   anomalies: []
 };
 
-// ✅ Facture avec beaucoup d'anomalies critiques
+// Facture avec beaucoup d'anomalies critiques
 export const mockFactureCritique: AdminDocument = {
   id: "doc_critique_003",
   filename: "facture_problematique.pdf",
@@ -98,11 +98,11 @@ export const mockFactureCritique: AdminDocument = {
     address: "",
     email: "contact@invalid",
     
-    issue_date: "2024-13-45", // ❌ Date invalide
+    issue_date: "2024-13-45", // Date invalide
     due_date: "",
     
     amount_ht: 0,
-    vat: -50, // ❌ Négatif !
+    vat: -50, // Negatif
     amount_ttc: 1500,
     vat_rate: 0,
     
@@ -139,7 +139,7 @@ export const mockFactureCritique: AdminDocument = {
   ]
 };
 
-// ✅ Devis (type différent)
+// Devis (type different)
 export const mockDevis: AdminDocument = {
   id: "doc_quote_004",
   filename: "devis_prestation.pdf",
@@ -166,7 +166,7 @@ export const mockDevis: AdminDocument = {
   anomalies: []
 };
 
-// ✅ Bon de commande
+// Bon de commande
 export const mockBonCommande: AdminDocument = {
   id: "doc_po_005",
   filename: "bon_commande_materiel.pdf",
@@ -200,7 +200,7 @@ export const mockBonCommande: AdminDocument = {
   ]
 };
 
-// ✅ Document avec valeurs null/undefined (pour tester la robustesse)
+// Document avec valeurs null/undefined (pour tester la robustesse)
 export const mockDocumentPartial: AdminDocument = {
   id: "doc_partial_006",
   filename: "facture_incomplete.pdf",
@@ -239,7 +239,7 @@ export const mockDocumentPartial: AdminDocument = {
   ]
 };
 
-// 📊 Export d'un tableau pour faciliter les tests en boucle
+// Export d'un tableau pour faciliter les tests en boucle
 export const allMockDocuments: AdminDocument[] = [
   mockFactureAmazon,
   mockFactureOVH,

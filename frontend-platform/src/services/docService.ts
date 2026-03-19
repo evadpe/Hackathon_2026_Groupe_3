@@ -2,7 +2,7 @@ import api from '@/lib/axios';
 import { AdminDocument } from '@/types';
 
 export const docService = {
-  // 1. Upload & Analyse (Bronze ➔ Silver)
+  // 1. Upload et analyse (Bronze -> Silver)
   uploadDocs: async (files: File[]): Promise<AdminDocument[]> => {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
@@ -25,7 +25,7 @@ export const docService = {
     return data;
   },
 
-  // 4. Valider un doc (Transition Silver ➔ Gold)
+  // 4. Valider un doc (Transition Silver -> Gold)
   // Utilisation de PUT car on met à jour l'intégralité des données extraites
   validateDoc: async (id: string, finalData: any): Promise<AdminDocument> => {
     const { data } = await api.put(`/documents/${id}/validate`, {
@@ -34,7 +34,7 @@ export const docService = {
     return data;
   },
 
-  // 5. Rejeter un document (Transition Silver ➔ Rejected)
+  // 5. Rejeter un document (Transition Silver -> Rejected)
   // Utilisation de PATCH pour une modification partielle de statut
   rejectDoc: async (id: string, reason?: string): Promise<AdminDocument> => {
     const { data } = await api.patch(`/documents/${id}/reject`, { reason });

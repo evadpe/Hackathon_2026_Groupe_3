@@ -1,22 +1,22 @@
-# StepAhead Industries - Plateforme d'Analyse Documentaire IA 🚀
+# StepAhead Industries - Plateforme d'Analyse Documentaire IA
 
 Bienvenue sur le dépôt du projet **Hackathon 2026 - Groupe 3**. Cette application est une solution complète d'automatisation et de vérification documentaire B2B (Moteur de conformité). Elle permet d'extraire, de vérifier et de valider automatiquement les bons de commande, factures et devis grâce à l'Intelligence Artificielle.
 
-## 🌟 Fonctionnalités Principales
+## Fonctionnalités Principales
 
 - **Extraction OCR Intelligente** : Traitement automatique des factures, bons de commande et devis (format PDF ou Image) grâce à `EasyOCR`.
 - **Rapprochement Tripartite** : Vérification métier automatique croisant les données du Bon de Commande, du Devis et de la Facture (prix, quantités, TVA, frais de port).
 - **Analyse Sémantique IA** : Utilisation de **Claude AI** pour déceler les incohérences subtiles (ex: "Chaise bleue" commandée mais "Siège azur" facturé).
 - **Architecture Data Lake (Médaillon)** :
-  - 🥉 **Bronze** : Stockage des documents bruts (MinIO / Local).
-  - 🥈 **Silver** : Données extraites en attente de validation humaine via l'interface UI.
-  - 🥇 **Gold** : Données certifiées et conformes, prêtes pour l'intégration CRM.
+  - **Bronze** : Stockage des documents bruts (MinIO / Local).
+  - **Silver** : Données extraites en attente de validation humaine via l'interface UI.
+  - **Gold** : Données certifiées et conformes, prêtes pour l'intégration CRM.
 - **Interface Utilisateur Moderne** : Dashboard interactif développé en Next.js avec retours visuels instantanés (Toast notifications) et espace métier (CRM).
 - **Automatisation n8n** : Webhook intégré pour déclencher des workflows post-validation.
 
 ---
 
-## 🏗️ Architecture du Projet
+## Architecture du Projet
 
 Le projet est divisé en deux parties principales conteneurisées via **Docker** :
 
@@ -34,7 +34,7 @@ Le projet est divisé en deux parties principales conteneurisées via **Docker**
 
 ---
 
-## 🛠️ Prérequis
+## Prérequis
 
 Pour exécuter le projet, vous aurez besoin de :
 - [Docker](https://www.docker.com/) et [Docker Compose](https://docs.docker.com/compose/) (Recommandé)
@@ -45,7 +45,7 @@ Pour exécuter le projet, vous aurez besoin de :
 
 ---
 
-## 🚀 Installation & Démarrage (Docker - Recommandé)
+## Installation & Démarrage (Docker - Recommandé)
 
 C'est la méthode la plus simple, Docker s'occupe de toutes les dépendances systèmes (comme Poppler ou OpenCV).
 
@@ -66,7 +66,7 @@ C'est la méthode la plus simple, Docker s'occupe de toutes les dépendances sys
 
 ---
 
-## 💻 Exécution Locale (Mode Développement)
+## Exécution Locale (Mode Développement)
 
 Si vous souhaitez modifier le code et voir les changements en direct :
 
@@ -92,11 +92,11 @@ npm run dev
 
 ---
 
-## 📁 Structure du Répertoire
+## Structure du Répertoire
 
 ```text
 Hackathon_2026_Groupe_3/
-├── backend/                   # 🐍 Serveur FastAPI & Logique métier IA
+├── backend/                   # Serveur FastAPI et logique métier IA
 │   ├── analyzer.py            # Analyse sémantique via LLM (Claude)
 │   ├── api.py                 # Points d'entrée (Endpoints) REST
 │   ├── Dockerfile             # Recette de construction de l'image Backend
@@ -105,8 +105,8 @@ Hackathon_2026_Groupe_3/
 │   ├── ocr_engine.py          # Wrapper liant l'API aux scripts OCR
 │   ├── requirements.txt       # Dépendances Python (opencv-python-headless, fastapi...)
 │   └── verifier.py            # Logique de rapprochement tripartite
-├── docker-compose.yml         # 🐳 Orchestration des services
-├── frontend-platform/         # ⚛️ Application Web Next.js
+├── docker-compose.yml         # Orchestration des services
+├── frontend-platform/         # Application web Next.js
 │   ├── Dockerfile             # Recette de construction de l'image Frontend
 │   ├── package.json           # Dépendances Node.js
 │   ├── src/
@@ -119,12 +119,12 @@ Hackathon_2026_Groupe_3/
 
 ---
 
-## 💡 Workflow d'Utilisation
+## Workflow d'Utilisation
 
 1. **Dashboard** : Visualisez les KPI en temps réel (documents totaux, en attente, validés).
 2. **Centre de Conformité (`/conformite`)** : 
    - Déposez vos PDF ou Images.
    - L'IA extrait les données, analyse la sémantique et fait le rapprochement.
    - Si des incohérences sont détectées, elles sont signalées en rouge/orange.
-3. **Validation Humaine** : L'opérateur corrige les erreurs éventuelles et valide le document (Passage Silver ➔ Gold).
+3. **Validation Humaine** : L'opérateur corrige les erreurs éventuelles et valide le document (Passage Silver -> Gold).
 4. **Espace Métier CRM (`/crm`)** : Seuls les documents certifiés "Gold" apparaissent, prêts à être envoyés en comptabilité ou intégrés à un ERP.

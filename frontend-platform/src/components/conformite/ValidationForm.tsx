@@ -1,5 +1,5 @@
 "use client";
-import { Save, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Save, CheckCircle2, Loader2 } from "lucide-react";
 import { AdminDocument } from "@/types";
 import { getFieldType } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -211,7 +211,6 @@ export default function ValidationForm({ document, onSuccess }: Props) {
                         : "text-orange-500"
                     }`}
                   >
-                    <AlertCircle size={12} />
                     {anomaly.severity === "error" ? "Erreur" : "Attention"}
                   </span>
                 )}
@@ -265,8 +264,7 @@ export default function ValidationForm({ document, onSuccess }: Props) {
         {/* Récapitulatif de toutes les anomalies détectées */}
         {anomalies.length > 0 && (
           <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <h4 className="text-xs font-bold text-red-800 uppercase mb-3 flex items-center gap-2">
-              <AlertCircle size={14} />
+            <h4 className="text-xs font-bold text-red-800 uppercase mb-3">
               Incohérences détectées ({anomalies.length})
             </h4>
             <ul className="text-xs text-red-700 space-y-2">
