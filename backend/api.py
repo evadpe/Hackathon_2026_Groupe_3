@@ -9,23 +9,19 @@ import os
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
-import httpx
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, upsert_document, get_by_status, get_by_id, update_status, update_anomalies
 from models import BonCommande, Devis, Facture
 from ocr_engine import pdf_to_ocr_dict, image_to_ocr_dict
 from run_ocr_test import adapter_ocr
-from storage import init_storage, upload_file, upload_json, public_url
+from storage import init_storage, upload_file, upload_json
 from verifier import VerificateurDocuments
-
-# URL du webhook n8n qui declenche le workflow apres chaque upload
-N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook/document-uploaded")
 
 # Correspondance entre les types OCR et les types internes
 OCR_TYPE_MAP = {
@@ -47,6 +43,9 @@ NIVEAU_TO_SEVERITY = {
     "AVERTISSEMENT": "warning",
     "INFO":          "warning",
 }
+FRONTEND_ORIGINS = ["http://localhost:3000", "http://localhost:3001"]
+ORCHESTRATION_STALE_HOURS = int(os.getenv("ORCHESTRATION_STALE_HOURS", "12"))
+SEVERITY_PRIORITY = {"error": 2, "warning": 1, "ok": 0}
 
 
 @asynccontextmanager
@@ -70,7 +69,7 @@ app = FastAPI(
 # On autorise les requetes depuis le frontend local
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,6 +117,32 @@ def _extraction_illisible(extracted_data: dict) -> bool:
     )
 
 
+def _parse_iso_datetime(raw_value: str | None) -> datetime | None:
+    if not raw_value:
+        return None
+
+    normalized = raw_value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _document_age_hours(upload_date: str | None) -> float | None:
+    parsed = _parse_iso_datetime(upload_date)
+    if not parsed:
+        return None
+    return round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
+
+
+def _document_severity(anomalies: list[dict]) -> str:
+    if any(anomaly.get("severity") == "error" for anomaly in anomalies):
+        return "error"
+    if any(anomaly.get("severity") == "warning" for anomaly in anomalies):
+        return "warning"
+    return "ok"
+
+
 def _make_admin_doc(doc_id, filename, type_frontend, extracted_data, anomalies, file_url) -> dict:
     """Construit le dictionnaire standard AdminDocument attendu par le frontend."""
     return {
@@ -132,20 +157,191 @@ def _make_admin_doc(doc_id, filename, type_frontend, extracted_data, anomalies, 
     }
 
 
-async def _notifier_n8n(docs: list):
-    """Previent n8n qu'un upload vient de se terminer pour declencher le workflow."""
+def _serialize_document_for_orchestration(document: dict) -> dict:
+    anomalies = document.get("anomalies", [])
+    severity = _document_severity(anomalies)
+    age_hours = _document_age_hours(document.get("uploadDate"))
+
+    return {
+        "id": document.get("id"),
+        "filename": document.get("filename"),
+        "type": document.get("type"),
+        "status": document.get("status"),
+        "uploadDate": document.get("uploadDate"),
+        "fileUrl": document.get("fileUrl"),
+        "anomalyCount": len(anomalies),
+        "severity": severity,
+        "ageHours": age_hours,
+        "hasBlockingAnomalies": severity == "error",
+        "requiresReview": severity != "ok",
+    }
+
+
+def _build_documents_summary(documents: list[dict]) -> dict:
+    counts_by_status = {}
+    counts_by_type = {}
+    counts_by_severity = {}
+    pending_with_blocking_anomalies = 0
+    documents_requiring_review = 0
+    stale_pending_documents = 0
+    oldest_pending_hours = 0.0
+
+    for document in documents:
+        status = document.get("status", "unknown")
+        doc_type = document.get("type", "unknown")
+        severity = _document_severity(document.get("anomalies", []))
+        age_hours = _document_age_hours(document.get("uploadDate"))
+
+        counts_by_status[status] = counts_by_status.get(status, 0) + 1
+        counts_by_type[doc_type] = counts_by_type.get(doc_type, 0) + 1
+        counts_by_severity[severity] = counts_by_severity.get(severity, 0) + 1
+
+        if severity != "ok":
+            documents_requiring_review += 1
+
+        if status == "silver":
+            if severity == "error":
+                pending_with_blocking_anomalies += 1
+            if age_hours is not None:
+                oldest_pending_hours = max(oldest_pending_hours, age_hours)
+                if age_hours >= ORCHESTRATION_STALE_HOURS:
+                    stale_pending_documents += 1
+
+    return {
+        "totalDocuments": len(documents),
+        "countsByStatus": counts_by_status,
+        "countsByType": counts_by_type,
+        "countsBySeverity": counts_by_severity,
+        "documentsRequiringReview": documents_requiring_review,
+        "pendingWithBlockingAnomalies": pending_with_blocking_anomalies,
+        "oldestPendingHours": oldest_pending_hours,
+        "stalePendingDocuments": stale_pending_documents,
+    }
+
+
+def _build_review_queue(documents: list[dict]) -> list[dict]:
+    queue = [_serialize_document_for_orchestration(document) for document in documents]
+    queue.sort(
+        key=lambda document: (
+            SEVERITY_PRIORITY.get(document["severity"], 0),
+            document["ageHours"] or 0,
+            document["filename"] or "",
+        ),
+        reverse=True,
+    )
+    return queue
+
+
+def _safe_float(value) -> float:
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(N8N_WEBHOOK_URL, json={"documents": docs})
-    except Exception as e:
-        print(f"[n8n] Webhook non joignable : {e}")
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _build_stale_documents(documents: list[dict]) -> list[dict]:
+    stale_documents = []
+
+    for document in documents:
+        serialized = _serialize_document_for_orchestration(document)
+        age_hours = serialized.get("ageHours")
+        if age_hours is None or age_hours < ORCHESTRATION_STALE_HOURS:
+            continue
+        stale_documents.append(serialized)
+
+    stale_documents.sort(
+        key=lambda document: (
+            document["ageHours"] or 0,
+            SEVERITY_PRIORITY.get(document["severity"], 0),
+            document["filename"] or "",
+        ),
+        reverse=True,
+    )
+    return stale_documents
+
+
+def _build_publication_summary(documents: list[dict]) -> dict:
+    counts_by_type = {}
+    total_amount_ttc = 0.0
+    published_documents = []
+
+    for document in documents:
+        doc_type = document.get("type", "unknown")
+        extracted_data = document.get("extractedData", {})
+        total_ttc = _safe_float(extracted_data.get("total_ttc"))
+
+        counts_by_type[doc_type] = counts_by_type.get(doc_type, 0) + 1
+        total_amount_ttc += total_ttc
+        published_documents.append(
+            {
+                "id": document.get("id"),
+                "filename": document.get("filename"),
+                "type": doc_type,
+                "status": document.get("status"),
+                "uploadDate": document.get("uploadDate"),
+                "fileUrl": document.get("fileUrl"),
+                "totalTtc": round(total_ttc, 2),
+            }
+        )
+
+    published_documents.sort(
+        key=lambda document: (
+            document["type"] or "",
+            document["filename"] or "",
+        )
+    )
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "documentCount": len(documents),
+        "countsByType": counts_by_type,
+        "totalAmountTtc": round(total_amount_ttc, 2),
+        "documents": published_documents,
+    }
+
+
+def _build_business_metrics(pending_documents: list[dict], gold_documents: list[dict]) -> dict:
+    pending_amount_ttc = 0.0
+    gold_amount_ttc = 0.0
+    documents_with_errors = 0
+    documents_with_warnings = 0
+
+    for document in pending_documents + gold_documents:
+        severity = _document_severity(document.get("anomalies", []))
+        if severity == "error":
+            documents_with_errors += 1
+        elif severity == "warning":
+            documents_with_warnings += 1
+
+    for document in pending_documents:
+        pending_amount_ttc += _safe_float(document.get("extractedData", {}).get("total_ttc"))
+
+    for document in gold_documents:
+        gold_amount_ttc += _safe_float(document.get("extractedData", {}).get("total_ttc"))
+
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "staleThresholdHours": ORCHESTRATION_STALE_HOURS,
+        "operational": {
+            "pendingDocuments": len(pending_documents),
+            "goldDocuments": len(gold_documents),
+            "stalePendingDocuments": len(_build_stale_documents(pending_documents)),
+            "documentsWithErrors": documents_with_errors,
+            "documentsWithWarnings": documents_with_warnings,
+        },
+        "financial": {
+            "pendingAmountTtc": round(pending_amount_ttc, 2),
+            "goldAmountTtc": round(gold_amount_ttc, 2),
+            "totalCertifiedAmountTtc": round(gold_amount_ttc, 2),
+        },
+        "queues": {
+            "reviewQueuePreview": _build_review_queue(pending_documents)[:10],
+            "publishedPreview": _build_publication_summary(gold_documents)["documents"][:10],
+        },
+    }
 
 
 @app.post("/documents/upload")
-async def upload_documents(
-    files: List[UploadFile] = File(...),
-    background_tasks: BackgroundTasks = None,
-):
+async def upload_documents(files: List[UploadFile] = File(...)):
     """
     Recoit un ou plusieurs fichiers PDF ou JSON depuis le frontend.
 
@@ -157,7 +353,8 @@ async def upload_documents(
     Si on recoit a la fois un bon de commande et une facture, on lance
     la verification inter-documents pour detecter les anomalies.
 
-    A la fin, on notifie n8n pour qu'il traite les nouveaux documents.
+    A la fin, les documents sont mis a disposition des DAGs Airflow via les
+    endpoints d'orchestration exposes par ce backend.
     """
     session_id    = uuid.uuid4().hex[:8]
     docs_by_type: Dict[str, dict] = {}
@@ -329,10 +526,6 @@ async def upload_documents(
         except Exception as exc:
             print(f"[Verification] Erreur : {exc}")
 
-    # On previent n8n en arriere-plan pour ne pas bloquer la reponse au frontend
-    if created_docs and background_tasks:
-        background_tasks.add_task(_notifier_n8n, created_docs)
-
     return created_docs
 
 
@@ -379,6 +572,76 @@ async def reject_document(doc_id: str, body: dict = {}):
 async def get_gold_documents():
     """Retourne les documents valides en zone Gold, visibles dans l'espace metier."""
     return get_by_status("gold")
+
+
+@app.get("/orchestration/review-queue")
+async def get_orchestration_review_queue():
+    """Expose la file silver enrichie pour les rapports et controles Airflow."""
+    pending_documents = get_by_status("silver")
+    queue = _build_review_queue(pending_documents)
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "staleThresholdHours": ORCHESTRATION_STALE_HOURS,
+        "queueSize": len(queue),
+        "documents": queue,
+    }
+
+
+@app.get("/orchestration/overview")
+async def get_orchestration_overview():
+    """Retourne une vue agregee de la stack documentaire pour Airflow."""
+    pending_documents = get_by_status("silver")
+    gold_documents = get_by_status("gold")
+    rejected_documents = get_by_status("rejected")
+    all_documents = pending_documents + gold_documents + rejected_documents
+    review_queue = _build_review_queue(pending_documents)
+
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "staleThresholdHours": ORCHESTRATION_STALE_HOURS,
+        "service": {
+            "backendStatus": "ok",
+            "version": app.version,
+        },
+        "frontend": {
+            "allowedOrigins": FRONTEND_ORIGINS,
+        },
+        "summary": _build_documents_summary(all_documents),
+        "queues": {
+            "silver": len(pending_documents),
+            "gold": len(gold_documents),
+            "rejected": len(rejected_documents),
+        },
+        "reviewQueuePreview": review_queue[:10],
+    }
+
+
+@app.get("/orchestration/stale-documents")
+async def get_orchestration_stale_documents():
+    """Retourne les documents silver depassant le seuil de stagnation."""
+    pending_documents = get_by_status("silver")
+    stale_documents = _build_stale_documents(pending_documents)
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "staleThresholdHours": ORCHESTRATION_STALE_HOURS,
+        "staleCount": len(stale_documents),
+        "documents": stale_documents,
+    }
+
+
+@app.get("/orchestration/publication-summary")
+async def get_orchestration_publication_summary():
+    """Expose un resume exploitable par Airflow pour la publication gold."""
+    gold_documents = get_by_status("gold")
+    return _build_publication_summary(gold_documents)
+
+
+@app.get("/orchestration/business-metrics")
+async def get_orchestration_business_metrics():
+    """Expose les indicateurs metier consolides pour les DAGs de reporting."""
+    pending_documents = get_by_status("silver")
+    gold_documents = get_by_status("gold")
+    return _build_business_metrics(pending_documents, gold_documents)
 
 
 @app.get("/health")

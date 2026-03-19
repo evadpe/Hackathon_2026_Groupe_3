@@ -13,12 +13,13 @@ Bienvenue sur le dépôt du projet **Hackathon 2026 - Groupe 3**. Cette applicat
   - **Gold** : Données certifiées et conformes, prêtes pour l'intégration CRM.
 - **Interface Utilisateur Moderne** : Dashboard interactif développé en Next.js avec retours visuels instantanés (Toast notifications) et espace métier (CRM).
 - **Automatisation n8n** : Webhook intégré pour déclencher des workflows post-validation.
+- **Orchestration Airflow** : DAGs planifiés pour superviser les flux bronze -> silver -> gold et préparer les exports métier.
 
 ---
 
 ## Architecture du Projet
 
-Le projet est divisé en deux parties principales conteneurisées via **Docker** :
+Le projet est divisé en plusieurs briques conteneurisées via **Docker** :
 
 ### 1. Backend (Python / FastAPI) `[Port 8000]`
 - **FastAPI** : API RESTful robuste et asynchrone.
@@ -31,6 +32,10 @@ Le projet est divisé en deux parties principales conteneurisées via **Docker**
 - **Tailwind CSS** : Design system moderne et responsive.
 - **Lucide React & Sonner** : Iconographie premium et notifications push (Toasts).
 - **Axios & React Dropzone** : Gestion des APIs et de l'upload de fichiers en Drag & Drop.
+
+### 3. Orchestration (n8n / Airflow) `[Ports 5678 / 8080]`
+- **n8n** : Orchestration événementielle déclenchée après l'upload.
+- **Airflow** : Orchestration planifiée des DAGs de suivi Silver et de publication Gold.
 
 ---
 
@@ -63,6 +68,8 @@ C'est la méthode la plus simple, Docker s'occupe de toutes les dépendances sys
 3. **Accéder à l'application** :
    - Interface UI (Frontend) : [http://localhost:3000](http://localhost:3000)
    - Swagger API (Backend) : [http://localhost:8000/docs](http://localhost:8000/docs)
+   - n8n : [http://localhost:5678](http://localhost:5678)
+   - Airflow : [http://localhost:8080](http://localhost:8080)
 
 ---
 
@@ -105,6 +112,10 @@ Hackathon_2026_Groupe_3/
 │   ├── ocr_engine.py          # Wrapper liant l'API aux scripts OCR
 │   ├── requirements.txt       # Dépendances Python (opencv-python-headless, fastapi...)
 │   └── verifier.py            # Logique de rapprochement tripartite
+├── airflow/                   # Image Airflow, DAGs et documentation associée
+│   ├── Dockerfile             # Recette de construction de l'image Airflow
+│   ├── dags/                  # DAGs d'orchestration bronze / silver / gold
+│   └── README.md              # Documentation d'orchestration
 ├── docker-compose.yml         # Orchestration des services
 ├── frontend-platform/         # Application web Next.js
 │   ├── Dockerfile             # Recette de construction de l'image Frontend
@@ -128,3 +139,4 @@ Hackathon_2026_Groupe_3/
    - Si des incohérences sont détectées, elles sont signalées en rouge/orange.
 3. **Validation Humaine** : L'opérateur corrige les erreurs éventuelles et valide le document (Passage Silver -> Gold).
 4. **Espace Métier CRM (`/crm`)** : Seuls les documents certifiés "Gold" apparaissent, prêts à être envoyés en comptabilité ou intégrés à un ERP.
+5. **Supervision Airflow** : Les DAGs surveillent les documents en attente, génèrent des rapports de suivi et préparent les manifestes d'export.
