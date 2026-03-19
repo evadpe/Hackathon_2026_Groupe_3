@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, upsert_document, get_by_status, get_by_id, update_status, update_anomalies
 from models import BonCommande, Devis, Facture
-from ocr_engine import pdf_to_ocr_dict
+from ocr_engine import pdf_to_ocr_dict, image_to_ocr_dict
 from run_ocr_test import adapter_ocr
 from storage import init_storage, upload_file, upload_json, public_url
 from verifier import VerificateurDocuments
@@ -109,6 +109,15 @@ def _ocr_to_extracted_data(raw: dict, type_frontend: str) -> dict:
     return data
 
 
+def _extraction_illisible(extracted_data: dict) -> bool:
+    """Retourne True si l'OCR n'a rien extrait d'utile (tout est inconnu ou zéro)."""
+    return (
+        extracted_data.get("numero", "INCONNU") in ("INCONNU", "Inconnu", "")
+        and extracted_data.get("fournisseur", "") in ("Inconnu", "")
+        and extracted_data.get("total_ttc", 0.0) == 0.0
+    )
+
+
 def _make_admin_doc(doc_id, filename, type_frontend, extracted_data, anomalies, file_url) -> dict:
     """Construit le dictionnaire standard AdminDocument attendu par le frontend."""
     return {
@@ -160,9 +169,16 @@ async def upload_documents(
         file_key = f"{session_id}_{uuid.uuid4().hex[:6]}{suffix}"
         content  = await upload.read()
 
+        IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
         # On envoie le fichier brut dans le bucket bronze du data lake
         try:
-            content_type = "application/pdf" if suffix == ".pdf" else "application/json"
+            if suffix == ".pdf":
+                content_type = "application/pdf"
+            elif suffix in IMAGE_SUFFIXES:
+                content_type = f"image/{suffix.lstrip('.')}"
+            else:
+                content_type = "application/json"
             file_url = upload_file("bronze", file_key, content, content_type)
         except Exception:
             # Si MinIO est indisponible, on garde une URL locale de secours
@@ -196,28 +212,67 @@ async def upload_documents(
                 Path(tmp_path).unlink(missing_ok=True)
 
             if raw_ocr is not None:
-                type_interne = _detecter_type(raw_ocr)
-                if type_interne != "inconnu":
+                type_interne   = _detecter_type(raw_ocr)
+                extracted_data = _ocr_to_extracted_data(raw_ocr, TYPE_TO_FRONTEND.get(type_interne, "invoice"))
+                if type_interne != "inconnu" and not _extraction_illisible(extracted_data):
                     docs_by_type[type_interne] = raw_ocr
                     file_urls[type_interne]    = file_url
                 else:
-                    # L'OCR a fonctionne mais le type de document n'est pas reconnu
+                    # OCR a tourné mais n'a rien extrait d'utile : document illisible
                     doc_id    = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
                     admin_doc = _make_admin_doc(
                         doc_id, upload.filename or file_key, "invoice",
-                        _ocr_to_extracted_data(raw_ocr, "invoice"),
-                        [{"field": "type", "message": "Type non reconnu.", "severity": "warning"}],
+                        {"note": "Document illisible"},
+                        [{"field": "ocr", "message": "Le document est illisible ou pixellise. Veuillez fournir un fichier de meilleure qualite.", "severity": "error"}],
                         file_url,
                     )
                     upsert_document(admin_doc)
                     created_docs.append(admin_doc)
             else:
-                # L'OCR a completement echoue (image trop floue, format non supporte...)
+                # L'OCR a completement echoue
                 doc_id    = f"PDF-{session_id}-{uuid.uuid4().hex[:4]}"
                 admin_doc = _make_admin_doc(
                     doc_id, upload.filename or file_key, "invoice",
+                    {"note": "Document illisible"},
+                    [{"field": "ocr", "message": "Le document est illisible ou pixellise. Veuillez fournir un fichier de meilleure qualite.", "severity": "error"}],
+                    file_url,
+                )
+                upsert_document(admin_doc)
+                created_docs.append(admin_doc)
+
+        elif suffix in IMAGE_SUFFIXES:
+            # Fichier image (PNG, JPG...) : on lance l'OCR directement sans conversion PDF
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+
+            try:
+                raw_ocr = image_to_ocr_dict(tmp_path)
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+
+            if raw_ocr is not None:
+                type_interne   = _detecter_type(raw_ocr)
+                extracted_data = _ocr_to_extracted_data(raw_ocr, TYPE_TO_FRONTEND.get(type_interne, "invoice"))
+                if type_interne != "inconnu" and not _extraction_illisible(extracted_data):
+                    docs_by_type[type_interne] = raw_ocr
+                    file_urls[type_interne]    = file_url
+                else:
+                    doc_id    = f"IMG-{session_id}-{uuid.uuid4().hex[:4]}"
+                    admin_doc = _make_admin_doc(
+                        doc_id, upload.filename or file_key, "invoice",
+                        {"note": "Document illisible"},
+                        [{"field": "ocr", "message": "Le document est illisible ou pixellise. Veuillez fournir un fichier de meilleure qualite.", "severity": "error"}],
+                        file_url,
+                    )
+                    upsert_document(admin_doc)
+                    created_docs.append(admin_doc)
+            else:
+                doc_id    = f"IMG-{session_id}-{uuid.uuid4().hex[:4]}"
+                admin_doc = _make_admin_doc(
+                    doc_id, upload.filename or file_key, "invoice",
                     {"note": "Extraction OCR echouee", "fichier": upload.filename},
-                    [{"field": "ocr", "message": "L'OCR n'a pas pu extraire les donnees du PDF.", "severity": "error"}],
+                    [{"field": "ocr", "message": "L'OCR n'a pas pu extraire les donnees de l'image.", "severity": "error"}],
                     file_url,
                 )
                 upsert_document(admin_doc)

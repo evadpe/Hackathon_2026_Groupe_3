@@ -19,13 +19,11 @@ export default function ConformitePage() {
   const [selectedDoc, setSelectedDoc] = useState<AdminDocument | null>(null);
   const [showUpload, setShowUpload] = useState(true);
 
-  // --- NOUVELLE LOGIQUE : TRANSITION FLUIDE ---
+  // Appelé après validation ou rejet : retire le document traité et sélectionne le suivant automatiquement
   const handleDocumentValidated = (validatedId: string) => {
-    // 1. On retire le document validé de la liste (Silver -> Gold)
     const updatedList = documents.filter(doc => doc.id !== validatedId);
     setDocuments(updatedList);
 
-    // 2. Sélection automatique du suivant pour la fluidité
     if (updatedList.length > 0) {
       setSelectedDoc(updatedList[0]);
     } else {
@@ -36,7 +34,7 @@ export default function ConformitePage() {
 
   const handleUploadSuccess = (newDocs: AdminDocument[]) => {
     setDocuments(prev => [...prev, ...newDocs]);
-    // Sélectionne le premier document du nouvel upload pour commencer direct
+    // Ouvre directement le premier document du lot uploadé
     setSelectedDoc(newDocs[0]);
     setShowUpload(false);
   };

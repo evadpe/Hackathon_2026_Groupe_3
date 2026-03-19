@@ -1,5 +1,6 @@
 import easyocr
 import cv2
+import numpy as np
 import json
 import re
 import os
@@ -16,7 +17,7 @@ if not os.path.exists(OUTPUT_FOLDER):
 
 # EasyOCR : le moteur qui lit le texte dans les images (modèle français chargé une seule fois)
 print("Initialisation d'EasyOCR...")
-ocr_reader = easyocr.Reader(['fr'])
+ocr_reader = easyocr.Reader(['fr', 'en'])
 
 
 # Pourquoi cette approche ?
@@ -301,6 +302,43 @@ def parse_financials(right_lines, full_text_fallback):
     return fin
 
 
+# Prétraitement de l'image avant OCR : gère les documents floutés, bruités et sous-exposés
+
+def preprocess_image(img):
+    """
+    Améliore la qualité d'une image avant de la passer à EasyOCR.
+    La binarisation (noir sur blanc) est l'étape la plus efficace pour les documents texte.
+    Pour les images floues, on débruite d'abord avant de binariser.
+    """
+    h, w = img.shape[:2]
+
+    # Agrandissement si l'image est trop petite — l'OCR est plus précis à haute résolution
+    if w < 1500:
+        scale = 1500 / w
+        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Mesure de la netteté : score bas = image floue ou bruitée
+    blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    if blur_score < 200:
+        # Image dégradée : débruitage avant binarisation
+        img = cv2.fastNlMeansDenoisingColored(img, None, h=10, hColor=10, templateWindowSize=7, searchWindowSize=21)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Binarisation adaptative : transforme le document en noir pur sur blanc pur.
+    # C'est le traitement le plus efficace pour améliorer la lisibilité du texte par l'OCR.
+    binary = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        blockSize=31,
+        C=10,
+    )
+    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+
+
 # Fonction principale : prend une image et retourne toutes les données extraites du document
 
 def process_document_extraction(image_path):
@@ -311,6 +349,9 @@ def process_document_extraction(image_path):
     raw_img = cv2.imread(image_path)
     if raw_img is None:
         return None
+
+    # Prétraitement pour améliorer la lisibilité avant OCR
+    raw_img = preprocess_image(raw_img)
 
     height, width, _ = raw_img.shape
 
@@ -324,8 +365,14 @@ def process_document_extraction(image_path):
     full_lines  = lines["full"]
     full_text   = "\n".join(t for _, t in full_lines)
 
+    print(f"[OCR DEBUG] image={image_path} size={width}x{height} blocs={len(results)}")
+    print(f"[OCR DEBUG] left_lines={left_lines[:8]}")
+    print(f"[OCR DEBUG] right_lines={right_lines[:8]}")
+    print(f"[OCR DEBUG] full_text (début):\n{full_text[:500]}")
+
     # 2. Détecte si c'est un document normal ou un BC inversé, pour lire les bons blocs
     layout = detect_layout(left_lines, right_lines)
+    print(f"[OCR DEBUG] layout={layout}")
 
     if layout == "bc_inv":
         # Fournisseur (destinataire du BC) est dans la colonne DROITE
@@ -388,8 +435,14 @@ def process_document_extraction(image_path):
         "financials": financials,
     }
 
-    # 5. Détecte le type de document (Facture / Devis / Bon de Commande) depuis l'en-tête
-    header_text = " ".join(t for _, t in left_lines[:6]).upper()
+    # 5. Détecte le type de document depuis l'en-tête.
+    # On cherche d'abord dans la colonne gauche, puis dans toute la page si non trouvé.
+    header_left = " ".join(t for _, t in left_lines[:6]).upper()
+    header_full = " ".join(t for _, t in full_lines[:8]).upper()
+    header_text = header_left if header_left.strip() else header_full
+    # Fallback : si left ne contient rien d'utile, on utilise la vue complète
+    if not any(kw in header_left for kw in ("FACTURE", "DEVIS", "COMMANDE")):
+        header_text = header_full
     if   "FACTURE"  in header_text: data["metadata"]["type"] = "Facture"
     elif "DEVIS"    in header_text: data["metadata"]["type"] = "Devis"
     elif "COMMANDE" in header_text: data["metadata"]["type"] = "Bon de Commande"

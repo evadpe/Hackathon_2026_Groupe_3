@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Pré-télécharge le modèle EasyOCR français au moment du build
 # (évite une attente de ~500 Mo au premier démarrage)
-RUN python -c "import easyocr; easyocr.Reader(['fr'])"
+RUN python -c "import easyocr; easyocr.Reader(['fr', 'en'])"
 
 # Copie le projet en gardant la structure (backend/ dossier à la racine de l'image)
 COPY backend/ ./backend/

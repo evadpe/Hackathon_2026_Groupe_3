@@ -1,18 +1,81 @@
-# OS / Editor specific
+
+# Système d'exploitation
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs
 .vscode/
 .idea/
 *.swp
-*.log
+*.swo
 
-# Python common
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environnements virtuels Python
 venv/
 .venv/
 env/
+.env/
 
-# Project Specific (Temporary/Generated)
+# Secrets et variables d'environnement
+.env
+.env.*
+.env.local
+*.pem
+*.key
+
+# Bases de données générées à l'exécution
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers uploadés par les utilisateurs (données clients, PDFs)
+backend/uploads/
+test_documents/
+
+# Résultats OCR et rapports générés automatiquement
+backend/rapports_ocr/
+backend/resultats_json/
+rapports_ocr/
+resultats_json/
+
+# Stockage local MinIO (data lake généré au démarrage Docker)
+backend/data_lake/
+data/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node.js
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Couverture de tests
+coverage/
+
+# Outils IA (contexte local de session, non pertinent pour le dépôt)
 .claude/
 .gemini/
+
+# Vercel
+.vercel

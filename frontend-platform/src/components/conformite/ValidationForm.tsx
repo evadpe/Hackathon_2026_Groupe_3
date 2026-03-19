@@ -1,5 +1,3 @@
-
-
 "use client";
 import { Save, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { AdminDocument } from "@/types";
@@ -12,24 +10,18 @@ interface Props {
   onSuccess?: () => void;
 }
 
-/**
- * Formate les valeurs selon le type d'input HTML
- * - Date: Convertit en format ISO (YYYY-MM-DD)
- * - Number: S'assure d'avoir une valeur numérique
- * - Text: Conversion simple en string
- */
+// Formate une valeur brute selon le type d'input attendu par le navigateur
 function formatValueForInput(value: any, inputType: string): string {
   if (value === null || value === undefined) return "";
 
-  // Pour les dates, convertir en format ISO (YYYY-MM-DD)
   if (inputType === "date") {
     const str = String(value).trim();
     // Déjà au format YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
       return str.slice(0, 10);
     }
-    // Format DD/MM/YYYY ou DD-MM-YYYY (sortie courante des OCR)
-    const dmyMatch = str.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})/);
+    // Format DD/MM/YYYY ou DD/MM/YYYY (sortie courante des OCR)
+    const dmyMatch = str.match(/^(\d{2})[\/](\d{2})[\/](\d{4})/);
     if (dmyMatch) {
       return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
     }
@@ -40,47 +32,42 @@ function formatValueForInput(value: any, inputType: string): string {
         return date.toISOString().split("T")[0];
       }
     } catch {
-      // Ignorer
+      // Valeur non parsable, on l'affiche telle quelle
     }
-    // Valeur non parsable : on l'affiche telle quelle en texte
     return str;
   }
 
-  // Pour les nombres, s'assurer d'avoir une valeur numérique
   if (inputType === "number") {
     const num = Number(value);
     return isNaN(num) ? "" : num.toString();
   }
 
-  // Pour le texte, conversion simple en string
   return String(value);
 }
 
-/**
- * Badge de statut avec couleurs appropriées
- */
-function StatusBadge({ status }: { status: AdminDocument['status'] }) {
+// Badge indiquant le statut Bronze / Silver / Gold du document
+function StatusBadge({ status }: { status: AdminDocument["status"] }) {
   const colors = {
     bronze: "bg-orange-100 text-orange-700",
     silver: "bg-gray-100 text-gray-700",
-    gold: "bg-yellow-100 text-yellow-700"
+    gold: "bg-yellow-100 text-yellow-700",
   };
 
   return (
-    <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-widest ${colors[status]}`}>
+    <span
+      className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-widest ${colors[status]}`}
+    >
       {status}
     </span>
   );
 }
 
-/**
- * Badge de type de document
- */
-function TypeBadge({ type }: { type: AdminDocument['type'] }) {
+// Badge indiquant le type de document (facture, devis, bon de commande)
+function TypeBadge({ type }: { type: AdminDocument["type"] }) {
   const labels = {
     invoice: "Facture",
     quote: "Devis",
-    purchase_order: "Bon de commande"
+    purchase_order: "Bon de commande",
   };
 
   return (
@@ -93,27 +80,25 @@ function TypeBadge({ type }: { type: AdminDocument['type'] }) {
 export default function ValidationForm({ document, onSuccess }: Props) {
   const { extractedData, anomalies, type, id, filename, status } = document;
 
-  const [formData, setFormData] = useState<Record<string, any>>(extractedData || {});
+  const [formData, setFormData] = useState<Record<string, any>>(
+    extractedData || {}
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-
-  // Reset le formulaire si on change de document
+  // Réinitialise le formulaire à chaque changement de document sélectionné
   useEffect(() => {
     setFormData(document.extractedData || {});
   }, [document.extractedData, document.id]);
 
-  /**
-   * Gère les changements d'input avec conversion de types
-   */
+  // Met à jour un champ en convertissant la valeur au bon type avant de la stocker
   const handleChange = (key: string, value: string, inputType: string) => {
     setFormData((prev) => {
       let processedValue: any = value;
 
-      // Conversion selon le type
       if (inputType === "number") {
         processedValue = value === "" ? null : Number(value);
       } else if (inputType === "date") {
-        processedValue = value; // Garder le format ISO
+        processedValue = value;
       }
 
       return {
@@ -121,19 +106,18 @@ export default function ValidationForm({ document, onSuccess }: Props) {
         [key]: processedValue,
       };
     });
-
   };
 
-  const handleValidation = async (e: React.FormEvent) => {
+  const handleValidation = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       await docService.validateDoc(document.id, formData);
       if (onSuccess) onSuccess();
-      alert("✅ Document validé et envoyé en Zone Gold !");
+      alert("Document validé et envoyé en Zone Gold !");
     } catch (error) {
-      console.error("❌ Erreur lors de la validation", error);
-      alert("❌ Erreur lors de la validation");
+      console.error("Erreur lors de la validation", error);
+      alert("Erreur lors de la validation");
     } finally {
       setIsSubmitting(false);
     }
@@ -141,31 +125,29 @@ export default function ValidationForm({ document, onSuccess }: Props) {
 
   const handleReject = async () => {
     const reason = prompt("Raison du rejet (optionnel) :");
-    if (reason === null) return; // annulé
+    if (reason === null) return;
     setIsSubmitting(true);
     try {
       await docService.rejectDoc(document.id, reason || undefined);
       if (onSuccess) onSuccess();
     } catch (error) {
-      console.error("❌ Erreur lors du rejet", error);
-      alert("❌ Erreur lors du rejet");
+      console.error("Erreur lors du rejet", error);
+      alert("Erreur lors du rejet");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Transformation de l'objet en tableau pour le mapping
+  // Transformation de l'objet en tableau pour le mapping des champs
   const fields = Object.entries(extractedData || {});
 
-  // Compteur d'anomalies par sévérité
-  const errorCount = anomalies.filter(a => a.severity === "error").length;
-  const warningCount = anomalies.filter(a => a.severity === "warning").length;
+  // Compteur d'anomalies par sévérité pour les indicateurs visuels
+  const errorCount = anomalies.filter((a) => a.severity === "error").length;
+  const warningCount = anomalies.filter((a) => a.severity === "warning").length;
 
   return (
     <div className="flex flex-col h-full bg-white border-l shadow-xl">
-      {/* ============================================
-          1. HEADER - Informations du document
-          ============================================ */}
+      {/* En-tête avec le nom du fichier, son type et son statut */}
       <div className="p-6 border-b bg-gradient-to-r from-gray-50 to-white">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xl font-bold text-gray-800">Validation OCR</h2>
@@ -180,26 +162,24 @@ export default function ValidationForm({ document, onSuccess }: Props) {
           <p className="text-xs">ID: {id}</p>
         </div>
 
-        {/* Indicateur d'anomalies dans le header */}
+        {/* Compteurs d'anomalies visibles dès l'en-tête */}
         {anomalies.length > 0 && (
           <div className="mt-3 flex gap-2 text-xs">
             {errorCount > 0 && (
               <span className="px-2 py-1 bg-red-100 text-red-700 rounded font-medium">
-                {errorCount} erreur{errorCount > 1 ? 's' : ''}
+                {errorCount} erreur{errorCount > 1 ? "s" : ""}
               </span>
             )}
             {warningCount > 0 && (
               <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded font-medium">
-                {warningCount} avertissement{warningCount > 1 ? 's' : ''}
+                {warningCount} avertissement{warningCount > 1 ? "s" : ""}
               </span>
             )}
           </div>
         )}
       </div>
 
-      {/* ============================================
-          2. FORMULAIRE - Champs extraits avec validation
-          ============================================ */}
+      {/* Formulaire des champs extraits par l'OCR */}
       <form
         id="ocr-form"
         onSubmit={handleValidation}
@@ -209,11 +189,10 @@ export default function ValidationForm({ document, onSuccess }: Props) {
           const inputType = getFieldType(key, value);
           const anomaly = anomalies?.find((a) => a.field === key);
 
-          // Récupération de la valeur actuelle depuis formData
           const currentValue = formData[key];
           const formattedValue = formatValueForInput(currentValue, inputType);
 
-          // Style selon la sévérité de l'anomalie
+          // Couleur de bordure selon la présence et la sévérité d'une anomalie
           const inputClass = anomaly
             ? anomaly.severity === "error"
               ? "border-red-300 bg-red-50 focus:ring-2 focus:ring-red-200"
@@ -222,13 +201,15 @@ export default function ValidationForm({ document, onSuccess }: Props) {
 
           return (
             <div key={key} className="space-y-1.5">
-              {/* Label du champ */}
               <label className="text-sm font-semibold text-gray-700 flex justify-between items-center">
                 <span>{key.replace(/_/g, " ").toUpperCase()}</span>
                 {anomaly && (
                   <span
-                    className={`text-[10px] font-bold flex items-center gap-1 uppercase ${anomaly.severity === "error" ? "text-red-500" : "text-orange-500"
-                      }`}
+                    className={`text-[10px] font-bold flex items-center gap-1 uppercase ${
+                      anomaly.severity === "error"
+                        ? "text-red-500"
+                        : "text-orange-500"
+                    }`}
                   >
                     <AlertCircle size={12} />
                     {anomaly.severity === "error" ? "Erreur" : "Attention"}
@@ -236,7 +217,6 @@ export default function ValidationForm({ document, onSuccess }: Props) {
                 )}
               </label>
 
-              {/* Input avec icône de validation */}
               <div className="relative">
                 <input
                   type={inputType}
@@ -249,24 +229,32 @@ export default function ValidationForm({ document, onSuccess }: Props) {
                     inputType === "date"
                       ? "YYYY-MM-DD"
                       : inputType === "number"
-                        ? "0.00"
-                        : ""
+                      ? "0.00"
+                      : ""
                   }
                 />
 
-                {/* Icône de validation (seulement si pas d'anomalie et valeur présente) */}
-                {!anomaly && currentValue !== null && currentValue !== undefined && currentValue !== "" && (
-                  <CheckCircle2
-                    className="absolute right-3 top-3 text-green-500"
-                    size={16}
-                  />
-                )}
+                {/* Icône verte confirmant que le champ est rempli sans anomalie */}
+                {!anomaly &&
+                  currentValue !== null &&
+                  currentValue !== undefined &&
+                  currentValue !== "" && (
+                    <CheckCircle2
+                      className="absolute right-3 top-3 text-green-500"
+                      size={16}
+                    />
+                  )}
               </div>
 
-              {/* Message d'erreur/warning */}
+              {/* Message explicatif sous le champ en cas d'anomalie */}
               {anomaly && (
-                <p className={`text-xs font-medium ${anomaly.severity === "error" ? "text-red-600" : "text-orange-600"
-                  }`}>
+                <p
+                  className={`text-xs font-medium ${
+                    anomaly.severity === "error"
+                      ? "text-red-600"
+                      : "text-orange-600"
+                  }`}
+                >
                   {anomaly.message}
                 </p>
               )}
@@ -274,9 +262,7 @@ export default function ValidationForm({ document, onSuccess }: Props) {
           );
         })}
 
-        {/* ============================================
-            3. ALERTE GLOBALE - Résumé des anomalies
-            ============================================ */}
+        {/* Récapitulatif de toutes les anomalies détectées */}
         {anomalies.length > 0 && (
           <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl">
             <h4 className="text-xs font-bold text-red-800 uppercase mb-3 flex items-center gap-2">
@@ -286,13 +272,18 @@ export default function ValidationForm({ document, onSuccess }: Props) {
             <ul className="text-xs text-red-700 space-y-2">
               {anomalies.map((a, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className={`mt-0.5 ${
-                    a.severity === "error" ? "text-red-500" : "text-orange-500"
-                  }`}>
-                    {a.severity === "error" ? "•" : "-"}
+                  <span
+                    className={`mt-0.5 ${
+                      a.severity === "error"
+                        ? "text-red-500"
+                        : "text-orange-500"
+                    }`}
+                  >
+                    {a.severity === "error" ? "•" : "›"}
                   </span>
                   <span>
-                    <strong className="font-semibold">{a.field}:</strong> {a.message}
+                    <strong className="font-semibold">{a.field}:</strong>{" "}
+                    {a.message}
                   </span>
                 </li>
               ))}
@@ -301,9 +292,7 @@ export default function ValidationForm({ document, onSuccess }: Props) {
         )}
       </form>
 
-      {/* ============================================
-          4. FOOTER - Actions de validation
-          ============================================ */}
+      {/* Boutons d'action : rejeter ou valider en Gold */}
       <div className="p-6 border-t bg-gray-50 grid grid-cols-2 gap-3">
         <button
           type="button"
