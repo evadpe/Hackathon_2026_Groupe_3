@@ -46,7 +46,7 @@ def extraire_donnees(chemin_fichier):
     
     return donnees
 
-# --- TEST REEL ---
+# Test réel sur un fichier image
 # Assure-toi que ton image 'téléchargement.jfif' est bien dans le même dossier que ce script !
 fichier_a_tester = 'ma_facture_fake2.jpg' 
 

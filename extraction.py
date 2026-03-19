@@ -6,7 +6,7 @@ import os
 import glob
 from pdf2image import convert_from_path
 
-# --- CONFIGURATION ---
+# Configuration
 INPUT_FOLDER  = "test_documents"   # dossier contenant les PDFs/images à analyser
 OUTPUT_FOLDER = "resultats_json"   # dossier où on sauvegarde les JSONs extraits
 POPPLER_PATH  = r"C:\Users\ilham\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin"  # chemin Poppler sur Windows (à adapter)
@@ -19,22 +19,12 @@ print("Initialisation d'EasyOCR...")
 ocr_reader = easyocr.Reader(['fr'])
 
 
-# ================================================================== #
-#  POURQUOI CETTE APPROCHE ?
-#
-#  Les documents ont deux colonnes visuelles (gauche=fournisseur,
-#  droite=client) MAIS les labels "Fournisseur" et "Client" sont
-#  à la MÊME hauteur Y. Trier uniquement par Y et chercher les ancres
-#  dans l'ordre ne fonctionne pas : EasyOCR peut retourner "Client"
-#  avant "Fournisseur" → les blocs s'inversent.
-#
-#  Solution retenue :
-#  1. Séparer les tokens en deux colonnes selon x_rel (< ou >= 0.45)
-#  2. Reconstruire des lignes physiques dans chaque colonne
-#     en regroupant les tokens proches en Y
-#  3. Chercher les ancres textuelles ("Fournisseur", "Client")
-#     DANS LEUR COLONNE RESPECTIVE — pas dans une liste mélangée
-# ================================================================== #
+# Pourquoi cette approche ?
+# Les documents ont deux colonnes (gauche=fournisseur, droite=client) mais les labels
+# sont à la même hauteur Y. Trier par Y seul ne fonctionne pas : EasyOCR peut retourner
+# "Client" avant "Fournisseur" et inverser les blocs.
+# Solution : séparer les tokens par position X, reconstruire des lignes par colonne,
+# puis chercher les ancres dans leur colonne respective.
 
 # Seuil horizontal séparant les deux colonnes (en ratio de la largeur)
 COL_SPLIT = 0.45
@@ -94,9 +84,7 @@ def reconstruct_lines(ocr_results, page_width, page_height):
     }
 
 
-# ------------------------------------------------------------------ #
-#  Helpers
-# ------------------------------------------------------------------ #
+# Fonctions utilitaires partagées
 
 def _clean_float(s):
     return float(s.replace(',', '.'))
@@ -133,9 +121,7 @@ def _extract_section_from_col(col_lines, anchor_re):
     return section
 
 
-# ------------------------------------------------------------------ #
-#  Parsing du bloc fournisseur
-# ------------------------------------------------------------------ #
+# Extraction du bloc fournisseur
 
 _VENDOR_ANCHOR = re.compile(r'^(Fournisseur|Vendeur|Emetteur|[EÉ]metteur)$', re.I)
 
@@ -209,9 +195,7 @@ def parse_vendor(col_lines):
     return vendor
 
 
-# ------------------------------------------------------------------ #
-#  Parsing du bloc client
-# ------------------------------------------------------------------ #
+# Extraction du bloc client
 
 _CUSTOMER_ANCHOR = re.compile(r'^(Client|Destinataire)$', re.I)
 # Dans le layout bc_inv, le "client" au sens métier est l'Acheteur/Émetteur (gauche)
@@ -242,9 +226,7 @@ def parse_customer(col_lines):
     return customer
 
 
-# ------------------------------------------------------------------ #
-#  Parsing des lignes articles
-# ------------------------------------------------------------------ #
+# Extraction des lignes articles depuis le tableau de produits
 
 # Regex principal : description | qté | unité | PU HT | [total HT optionnel]
 # Le total_ht est rendu OPTIONNEL car en production EasyOCR peut placer
@@ -293,9 +275,7 @@ def parse_items(full_lines, items_start_y):
     return line_items
 
 
-# ------------------------------------------------------------------ #
-#  Parsing des montants financiers
-# ------------------------------------------------------------------ #
+# Extraction des montants financiers (HT, TVA, TTC)
 
 def parse_financials(right_lines, full_text_fallback):
     fin = {"total_ht": 0.0, "tva_rate": "0%", "tva_amount": 0.0, "total_ttc": 0.0}
@@ -317,9 +297,7 @@ def parse_financials(right_lines, full_text_fallback):
     return fin
 
 
-# ================================================================== #
-#  Fonction principale d'extraction
-# ================================================================== #
+# Fonction principale : prend une image et retourne toutes les données extraites du document
 
 def process_document_extraction(image_path):
     """
@@ -448,9 +426,7 @@ def process_document_extraction(image_path):
     return data
 
 
-# ================================================================== #
-#  Point d'entrée
-# ================================================================== #
+# Point d'entrée : parcourt INPUT_FOLDER et génère un JSON par document trouvé
 
 def main():
     # Recherche récursive de tous les fichiers dans INPUT_FOLDER et ses sous-dossiers.
@@ -479,7 +455,7 @@ def main():
         rel_path = os.path.relpath(file_path, INPUT_FOLDER)
         print(f"Traitement : {rel_path}")
 
-        # ── Conversion PDF → image temporaire ────────────────────────
+        # Conversion PDF en image temporaire avant OCR
         if file_path.lower().endswith('.pdf'):
             try:
                 pages = convert_from_path(file_path, poppler_path=POPPLER_PATH)
@@ -489,20 +465,19 @@ def main():
                 if os.path.exists(temp_image_path):
                     os.remove(temp_image_path)
             except Exception as e:
-                print(f"  ✗ Erreur PDF : {e}\n")
+                print(f"  ERREUR PDF : {e}\n")
                 err_count += 1
                 continue
         else:
             result = process_document_extraction(file_path)
 
         if not result:
-            print(f"  ✗ Extraction échouée (image illisible ?)\n")
+            print(f"  ECHEC : extraction échouée (image illisible ?)\n")
             err_count += 1
             continue
 
-        # ── Calcul du chemin de sortie en miroir de l'entrée ─────────
-        # Structure d'entrée  : test_documents/document client 2/invoice.pdf
-        # Structure de sortie : resultats_json/document client 2/invoice.pdf.json
+        # Calcul du chemin de sortie en miroir de l'entrée
+        # ex: test_documents/client 2/invoice.pdf -> resultats_json/client 2/invoice.pdf.json
         rel_dir     = os.path.dirname(rel_path)          # "document client 2"
         output_dir  = os.path.join(OUTPUT_FOLDER, rel_dir)
         os.makedirs(output_dir, exist_ok=True)
@@ -513,10 +488,10 @@ def main():
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=4, ensure_ascii=False)
 
-        print(f"  ✓ → {output_path}\n")
+        print(f"  OK -> {output_path}\n")
         ok_count += 1
 
-    print(f"─── Terminé : {ok_count} succès, {err_count} erreur(s) ───")
+    print(f"Termine : {ok_count} succes, {err_count} erreur(s)")
 
 
 if __name__ == "__main__":

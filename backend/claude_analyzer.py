@@ -92,9 +92,7 @@ def _detecter_matiere(description: str) -> int | None:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Fonction principale
-# ─────────────────────────────────────────────────────────────────────────────
+# Analyse principale : compare chaque paire de lignes BC/facture sur la couleur, la matière et le texte
 
 def analyser_coherence_semantique(
     lignes_bc: List[LigneDocument],

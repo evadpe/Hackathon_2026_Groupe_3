@@ -22,7 +22,7 @@ from models import BonCommande, Devis, Facture
 from verifier import VerificateurDocuments
 from report import afficher_rapport, exporter_rapport_json
 
-# ─── Chemins par défaut ──────────────────────────────────────────────────────
+# Chemins par défaut vers les fichiers de démonstration
 DATA_DIR = Path(__file__).parent / "data"
 DEFAULT_BC     = DATA_DIR / "sample_bc.json"
 DEFAULT_DEVIS  = DATA_DIR / "sample_devis.json"
@@ -45,7 +45,7 @@ def nettoyer_lignes(lignes: list[dict]) -> list[dict]:
 def main():
     args = sys.argv[1:]
 
-    # ── Résolution des fichiers ──────────────────────────────────────────────
+    # Résolution des fichiers depuis les arguments de la ligne de commande
     export_fichier = None
     fichiers = []
     i = 0
@@ -72,7 +72,7 @@ def main():
         print("Usage : python main.py [bc.json devis.json facture.json] [--export rapport.json]")
         sys.exit(1)
 
-    # ── Chargement des documents ──────────────────────────────────────────────
+    # Chargement et validation des trois documents
     print("Chargement des documents...")
 
     data_bc = charger_json(chemin_bc)
@@ -94,14 +94,14 @@ def main():
     print(f"  [OK] Facture         : {facture.numero}")
     print("\nLancement de la verification...\n")
 
-    # ── Vérification ─────────────────────────────────────────────────────────
+    # Lancement de la vérification inter-documents
     verificateur = VerificateurDocuments()
     rapport = verificateur.verifier(bon_commande, facture, devis)
 
-    # ── Affichage ─────────────────────────────────────────────────────────────
+    # Affichage du rapport dans le terminal
     afficher_rapport(rapport)
 
-    # ── Export JSON optionnel ─────────────────────────────────────────────────
+    # Export JSON du rapport si le flag --export a été passé
     if export_fichier:
         with open(export_fichier, "w", encoding="utf-8") as f:
             f.write(exporter_rapport_json(rapport))

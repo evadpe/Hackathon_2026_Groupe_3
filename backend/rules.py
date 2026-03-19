@@ -13,9 +13,7 @@ from models import (
 TOLERANCE_CUIR = 0.05
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Matching des lignes entre deux documents par référence article
-# ─────────────────────────────────────────────────────────────────────────────
+# Association des lignes entre deux documents par référence article
 
 def matcher_lignes(
     bc: BonCommande,
@@ -39,9 +37,7 @@ def matcher_lignes(
     return pairs
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Vérification des prix
-# ─────────────────────────────────────────────────────────────────────────────
 
 def verifier_prix(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     """Le prix unitaire facturé correspond-il à celui du bon de commande ?"""
@@ -82,9 +78,7 @@ def verifier_montant_ht(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     return alertes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Vérification des quantités (avec tolérances selon la catégorie)
-# ─────────────────────────────────────────────────────────────────────────────
+# Vérification des quantités avec tolérances selon la catégorie de matériau
 
 def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     alertes = []
@@ -157,9 +151,7 @@ def verifier_quantite(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     return alertes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Vérification des pointures (semelles et talons uniquement)
-# ─────────────────────────────────────────────────────────────────────────────
+# Vérification des pointures (uniquement pour les semelles et talons)
 
 def verifier_pointure(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     """La pointure facturée correspond-elle à la pointure commandée ?"""
@@ -194,9 +186,7 @@ def verifier_pointure(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     return alertes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Vérification des conversions d'unités
-# ─────────────────────────────────────────────────────────────────────────────
+# Vérification des conversions d'unités quand BC et facture n'utilisent pas la même unité
 
 def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Alerte]:
     """
@@ -261,9 +251,7 @@ def verifier_conversion_unites(bc: LigneDocument, fac: LigneDocument) -> List[Al
     return alertes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Vérification des frais de port (BC / Devis -> Facture)
-# ─────────────────────────────────────────────────────────────────────────────
+# Vérification des frais de port : le devis disait franco ? La facture doit l'être aussi.
 
 def verifier_frais_port(devis: Devis, facture: Facture) -> List[Alerte]:
     """Le devis disait franco de port ? Vérifie que la facture ne facture pas quand même."""
@@ -293,9 +281,7 @@ def verifier_frais_port(devis: Devis, facture: Facture) -> List[Alerte]:
     return alertes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Vérification de la cohérence interne des totaux d'un document
-# ─────────────────────────────────────────────────────────────────────────────
+# Vérification de la cohérence interne des totaux : HT + TVA doit égaler TTC
 
 def verifier_totaux(doc: Document, label: str) -> List[Alerte]:
     """Le total HT et le TTC du document sont-ils cohérents avec les lignes et la TVA ?"""

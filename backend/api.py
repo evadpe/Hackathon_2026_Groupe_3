@@ -26,7 +26,7 @@ from run_ocr_test import adapter_ocr
 from verifier import VerificateurDocuments
 from ocr_engine import pdf_to_ocr_dict
 
-# ─── App & CORS ──────────────────────────────────────────────────────────────
+# Initialisation de l'application FastAPI et configuration du CORS pour le frontend local
 
 app = FastAPI(title="StepAhead Industries — API Conformité", version="1.0.0")
 
@@ -38,18 +38,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Stockage fichiers uploadés ───────────────────────────────────────────────
+# Dossier local où sont stockés les fichiers uploadés, servi comme route statique /files
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(UPLOAD_DIR)), name="files")
 
-# ─── Base de données en mémoire ───────────────────────────────────────────────
-# En prod : remplacer par PostgreSQL / SQLite
+# Base de données en mémoire : les documents disparaissent si le serveur redémarre.
+# En production, remplacer par SQLite ou PostgreSQL.
 
 documents_db: Dict[str, dict] = {}
 
-# ─── Mappings ─────────────────────────────────────────────────────────────────
+# Correspondances entre les noms OCR, les types internes et les types attendus par le frontend
 
 OCR_TYPE_MAP = {
     "Facture":         "facture",
@@ -70,7 +70,7 @@ NIVEAU_TO_SEVERITY = {
 }
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+# Fonctions utilitaires internes pour transformer les données OCR en format frontend
 
 def _detecter_type(raw: dict) -> str:
     """Retourne le type interne ('facture', 'bon_commande', 'devis') depuis un dict OCR."""
@@ -123,8 +123,6 @@ def _make_admin_doc(
     }
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
-
 @app.post("/documents/upload")
 async def upload_documents(files: List[UploadFile] = File(...)):
     """
@@ -149,7 +147,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
 
         file_url = f"/files/{file_key}"
 
-        # ── Fichier JSON (output OCR) ────────────────────────────────────────
+        # Fichier JSON : résultat OCR déjà traité, on le parse directement
         if suffix == ".json":
             try:
                 raw_ocr = json.loads(content)
@@ -163,7 +161,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
             docs_by_type[type_interne]    = raw_ocr
             saved_filenames[type_interne] = file_url
 
-        # ── Fichier PDF (OCR via EasyOCR) ────────────────────────────────────
+        # Fichier PDF : on lance l'OCR pour en extraire les données
         elif suffix == ".pdf":
             raw_ocr = pdf_to_ocr_dict(str(dest))
 
@@ -200,7 +198,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 documents_db[doc_id] = admin_doc
                 created_docs.append(admin_doc)
 
-    # ── Créer un AdminDocument par fichier JSON reçu ─────────────────────────
+    # Pour chaque type de document reconnu, on crée un AdminDocument et on le persiste en mémoire
     for type_interne, raw_ocr in docs_by_type.items():
         type_frontend = TYPE_TO_FRONTEND[type_interne]
         doc_id        = f"{type_interne.upper()}-{session_id}"
@@ -217,7 +215,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
         documents_db[doc_id] = admin_doc
         created_docs.append(admin_doc)
 
-    # ── Vérification inter-documents (requiert BC + Facture au minimum) ───────
+    # Si on a un BC et une facture, on vérifie leur cohérence et on attache les anomalies
     if "bon_commande" in docs_by_type and "facture" in docs_by_type:
         try:
             bon_commande = BonCommande.model_validate(
