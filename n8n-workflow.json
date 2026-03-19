@@ -1,0 +1,299 @@
+{
+  "name": "StepAhead - Pipeline Conformite Documentaire",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "document-uploaded",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Declencheur upload documents",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "document-uploaded"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/documents/pending",
+        "options": {}
+      },
+      "id": "get-pending",
+      "name": "Recuperer docs en attente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-empty",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-has-docs",
+      "name": "Des documents a traiter ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "=",
+        "options": {}
+      },
+      "id": "split-docs",
+      "name": "Traiter chaque document",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyse les anomalies du document et détermine son niveau de risque\nconst doc = $input.item.json;\nconst anomalies = doc.anomalies || [];\n\nconst nbErreurs = anomalies.filter(a => a.severity === 'error').length;\nconst nbWarnings = anomalies.filter(a => a.severity === 'warning').length;\n\nlet niveau;\nif (nbErreurs > 0) {\n  niveau = 'CRITIQUE';\n} else if (nbWarnings > 0) {\n  niveau = 'A_VERIFIER';\n} else {\n  niveau = 'CONFORME';\n}\n\nreturn {\n  json: {\n    ...doc,\n    _analyse: {\n      niveau,\n      nbErreurs,\n      nbWarnings,\n      resumeAnomalies: anomalies.map(a => `[${a.severity?.toUpperCase()}] ${a.field}: ${a.message}`).join('\\n')\n    }\n  }\n};"
+      },
+      "id": "analyse-risk",
+      "name": "Analyser le niveau de risque",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-critique",
+              "leftValue": "={{ $json._analyse.niveau }}",
+              "rightValue": "CRITIQUE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-critique",
+      "name": "Erreurs critiques ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-warning",
+              "leftValue": "={{ $json._analyse.niveau }}",
+              "rightValue": "A_VERIFIER",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-warning",
+      "name": "Warnings seulement ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 340]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://backend:8000/documents/{{ $json.id }}/validate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "extractedData",
+              "value": "={{ $json.extractedData }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "auto-validate",
+      "name": "Auto-valider vers Zone Gold",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 480]
+    },
+    {
+      "parameters": {},
+      "id": "noop-critique",
+      "name": "En attente de review - erreurs critiques",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 100]
+    },
+    {
+      "parameters": {},
+      "id": "noop-warning",
+      "name": "En attente de review - warnings",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "rapport-trigger",
+      "name": "Rapport quotidien 8h lun-ven",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/documents/gold",
+        "options": {}
+      },
+      "id": "get-gold",
+      "name": "Recuperer Zone Gold",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/documents/pending",
+        "options": {}
+      },
+      "id": "get-pending-report",
+      "name": "Recuperer docs en attente rapport",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 740]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construit le rapport journalier\nconst goldDocs = $('Recuperer Zone Gold').all().map(i => i.json);\nconst pendingDocs = $('Recuperer docs en attente rapport').all().map(i => i.json);\n\nconst totalGold = goldDocs.length;\nconst totalPending = pendingDocs.length;\nconst volumeTotal = goldDocs.reduce((sum, d) => sum + (d.extractedData?.total_ttc || 0), 0);\n\nconst lignesGold = goldDocs.map(d =>\n  `- ${d.filename} - ${d.extractedData?.fournisseur || 'N/A'} - ${(d.extractedData?.total_ttc || 0).toFixed(2)} EUR`\n).join('\\n') || \"Aucun document valide aujourd'hui\";\n\nconst rapport = [\n  `Rapport Conformite - ${new Date().toLocaleDateString('fr-FR')}`,\n  `Documents valides (Zone Gold) : ${totalGold}`,\n  `Documents en attente : ${totalPending}`,\n  `Volume total TTC valide : ${volumeTotal.toFixed(2)} EUR`,\n  ``,\n  `Derniers documents valides :`,\n  lignesGold\n].join('\\n');\n\nconsole.log(rapport);\nreturn { json: { rapport, totalGold, totalPending, volumeTotal } };"
+      },
+      "id": "build-report",
+      "name": "Construire le rapport",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 670]
+    },
+    {
+      "parameters": {},
+      "id": "noop-report",
+      "name": "Rapport disponible dans les logs",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [920, 670]
+    }
+  ],
+  "connections": {
+    "Declencheur upload documents": {
+      "main": [
+        [{ "node": "Recuperer docs en attente", "type": "main", "index": 0 }]
+      ]
+    },
+    "Recuperer docs en attente": {
+      "main": [
+        [{ "node": "Des documents a traiter ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Des documents a traiter ?": {
+      "main": [
+        [{ "node": "Traiter chaque document", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Traiter chaque document": {
+      "main": [
+        [{ "node": "Analyser le niveau de risque", "type": "main", "index": 0 }]
+      ]
+    },
+    "Analyser le niveau de risque": {
+      "main": [
+        [{ "node": "Erreurs critiques ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Erreurs critiques ?": {
+      "main": [
+        [{ "node": "En attente de review - erreurs critiques", "type": "main", "index": 0 }],
+        [{ "node": "Warnings seulement ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Warnings seulement ?": {
+      "main": [
+        [{ "node": "En attente de review - warnings", "type": "main", "index": 0 }],
+        [{ "node": "Auto-valider vers Zone Gold", "type": "main", "index": 0 }]
+      ]
+    },
+    "Rapport quotidien 8h lun-ven": {
+      "main": [
+        [
+          { "node": "Recuperer Zone Gold", "type": "main", "index": 0 },
+          { "node": "Recuperer docs en attente rapport", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Recuperer Zone Gold": {
+      "main": [
+        [{ "node": "Construire le rapport", "type": "main", "index": 0 }]
+      ]
+    },
+    "Recuperer docs en attente rapport": {
+      "main": [
+        [{ "node": "Construire le rapport", "type": "main", "index": 0 }]
+      ]
+    },
+    "Construire le rapport": {
+      "main": [
+        [{ "node": "Rapport disponible dans les logs", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

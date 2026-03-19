@@ -18,7 +18,7 @@ from rules import (
     verifier_frais_port,
     verifier_totaux,
 )
-from claude_analyzer import analyser_coherence_semantique
+from backend.analyzer import analyser_coherence_semantique
 
 
 class VerificateurDocuments:

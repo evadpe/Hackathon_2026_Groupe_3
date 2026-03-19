@@ -21,14 +21,14 @@ from verifier import VerificateurDocuments
 from report import afficher_rapport, exporter_rapport_json
 
 
-# ── Mapping type OCR → type interne ──────────────────────────────────────────
+# Correspondance entre le type retourné par l'OCR et le type interne utilisé dans le code
 TYPE_MAP = {
     "Facture":        "facture",
     "Bon de Commande": "bon_commande",
     "Devis":          "devis",
 }
 
-# ── Catégorie par défaut si non précisée dans l'OCR ──────────────────────────
+# Catégorie appliquée par défaut si l'OCR ne précise pas le type de matériau
 CATEGORIE_PAR_DEFAUT = "fournitures"
 
 MOTS_CLES_CATEGORIE = {
