@@ -1,13 +1,20 @@
-from datetime import datetime, timezone
-
 import pendulum
 from airflow.decorators import dag, task
 
-from common.project_api import backend_get, write_report
+from common.project_api import (
+    build_report_metadata,
+    iso_utc_now,
+    backend_get,
+    require_backend_healthy,
+    write_report,
+)
+
+
+DAG_ID = "gold_publication_orchestration"
 
 
 @dag(
-    dag_id="gold_publication_orchestration",
+    dag_id=DAG_ID,
     schedule="0 7 * * *",
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
@@ -19,28 +26,31 @@ from common.project_api import backend_get, write_report
 )
 def gold_publication_orchestration():
     @task
-    def fetch_gold_documents():
-        return backend_get("/documents/gold")
+    def check_backend_health():
+        return require_backend_healthy()
 
     @task
-    def build_gold_manifest(gold_documents: list[dict]):
+    def fetch_publication_summary(_: dict):
+        return backend_get("/orchestration/publication-summary")
+
+    @task
+    def build_gold_manifest(health_status: dict, publication_summary: dict):
         payload = {
-            "generatedAt": datetime.now(timezone.utc).isoformat(),
-            "documentCount": len(gold_documents),
-            "documents": [
-                {
-                    "id": document.get("id"),
-                    "filename": document.get("filename"),
-                    "type": document.get("type"),
-                    "fileUrl": document.get("fileUrl"),
-                    "validatedAt": document.get("uploadDate"),
-                }
-                for document in gold_documents
-            ],
+            "metadata": build_report_metadata("gold_manifest", DAG_ID),
+            "backend": health_status,
+            "summary": {
+                "generatedAt": iso_utc_now(),
+                "documentCount": publication_summary.get("documentCount", 0),
+                "countsByType": publication_summary.get("countsByType", {}),
+                "totalAmountTtc": publication_summary.get("totalAmountTtc", 0),
+            },
+            "documents": publication_summary.get("documents", []),
         }
         return write_report("gold_manifest", payload)
 
-    build_gold_manifest(fetch_gold_documents())
+    health_status = check_backend_health()
+    publication_summary = fetch_publication_summary(health_status)
+    build_gold_manifest(health_status, publication_summary)
 
 
 gold_publication_orchestration()

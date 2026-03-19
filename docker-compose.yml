@@ -38,6 +38,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    command: >
+      sh -c "python -m pip install --no-cache-dir minio &&
+      uvicorn api:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     environment:
@@ -45,8 +48,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_PUBLIC_URL: http://localhost:9000
-      N8N_WEBHOOK_URL: http://n8n:5678/webhook/document-uploaded
+      ORCHESTRATION_STALE_HOURS: "12"
     volumes:
+      - ./backend:/app/backend
+      - ./extraction.py:/app/extraction.py
       # Persiste la base SQLite entre les redemarrages
       - sqlite_data:/app/backend/data
     depends_on:
@@ -67,19 +72,6 @@ services:
 
   # --- Orchestration -------------------------------------------------------
 
-  n8n:
-    image: n8nio/n8n
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - WEBHOOK_URL=http://localhost:5678/
-    volumes:
-      - n8n_data:/home/node/.n8n
-    depends_on:
-      - backend
-
   airflow:
     build:
       context: .
@@ -92,7 +84,11 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       BACKEND_API_URL: http://backend:8000
+      FRONTEND_URL: http://frontend:3000
+      MINIO_HEALTHCHECK_URL: http://minio:9000/minio/health/live
       AIRFLOW_REPORTS_DIR: /opt/airflow/logs/reports
+      AIRFLOW_SILVER_STALE_HOURS: "12"
+      AIRFLOW_REQUEST_TIMEOUT_SECONDS: "30"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
@@ -103,5 +99,4 @@ services:
 volumes:
   minio_data:
   sqlite_data:
-  n8n_data:
   airflow_logs:
