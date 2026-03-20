@@ -104,7 +104,7 @@ npm run dev
 ```text
 Hackathon_2026_Groupe_3/
 ├── backend/                   # Serveur FastAPI et logique métier IA
-│   ├── analyzer.py            # Analyse sémantique via LLM (Claude)
+│   ├── analyzer.py            # Analyse sémantique 
 │   ├── api.py                 # Points d'entrée (Endpoints) REST
 │   ├── Dockerfile             # Recette de construction de l'image Backend
 │   ├── extraction.py          # Script principal de l'extraction EasyOCR
